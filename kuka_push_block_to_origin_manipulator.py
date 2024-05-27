@@ -5,6 +5,9 @@ import numpy as np
 import pybullet as pb
 import pybullet_data
 
+import gymnasium as gym
+import tianshou as ts
+
 import argparse
 
 from pybullet_utils import bullet_client
