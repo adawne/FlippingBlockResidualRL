@@ -1,0 +1,54 @@
+<robot name="zenga_block">
+  <link name="block">
+    <!-- <surface> -->
+    <!--   <friction> -->
+    <!--     <ode> -->
+    <!--       <mu>10.0</mu> -->
+    <!--       <mu2>10.0</mu2> -->
+    <!--     </ode> -->
+    <!--   </friction> -->
+    <!-- </surface> -->
+    <!-- <contact> -->
+    <!--   <lateral_friction value="1.0"/> -->
+    <!--   <rolling_friction value="0.0"/> -->
+    <!--   <contact_cfm value="0.0"/> -->
+    <!--   <contact_erp value="1.0"/> -->
+    <!-- </contact> -->
+    <!-- <contact> -->
+    <!--   <lateral_friction value="1.0" /> -->
+    <!--   <rolling_friction value="0.0" /> -->
+    <!--   <contact_cfm value="0.0" /> -->
+    <!--   <contact_erp value="1.0" /> -->
+    <!-- </contact> -->
+
+    <!-- <contact> -->
+    <!--   <stiffness value="30000000000000.0"/> -->
+    <!--   <damping value="100.0"/> -->
+    <!--   <!-\- <rolling_friction value="1.0"/> -\-> -->
+    <!--   <spinning_friction value="1.0"/> -->
+    <!--   <lateral_friction value="1.0"/> -->
+    <!-- </contact> -->
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+	<box size=".18 .06 .03" />
+      </geometry>
+      <material name="blue">
+        <color rgba="0 0 1 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+	<box size=".18 .06 .03" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value=".0001" />
+      <!-- <inertia ixx=".01" ixy="0" ixz="0" iyy=".01" iyz="0" izz=".01" /> -->
+      <inertia ixx=".0001" ixy="0" ixz="0" iyy=".0001" iyz="0" izz=".0001" />
+    </inertial>
+  </link>
+
+</robot>
