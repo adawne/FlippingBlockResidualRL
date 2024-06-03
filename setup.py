@@ -1,6 +1,6 @@
-from setuptools import setuptools
+from setuptools import setup
 
 setup(
-    name='push_block',
+    name='research_main',
     version='0.1',
 )
