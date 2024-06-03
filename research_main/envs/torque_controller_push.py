@@ -2,8 +2,11 @@ import numpy as np
 import pybullet as pb
 import control
 
-from kuka_dynamics import *
-from utils_push import *
+from research_main.envs.kuka_dynamics import *
+from research_main.envs.kuka_dynamics import iterative_ne_algorithm
+
+from research_main.envs.utils_push import *
+
 
 
 arm_joint_indices = [0, 1, 2, 3, 4, 5, 6]

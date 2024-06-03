@@ -14,9 +14,8 @@ import argparse
 
 from pybullet_utils import bullet_client
 
-from utils_push import *
-from torque_controller_push import *
-
+from research_main.envs.utils_push import *
+from research_main.envs.torque_controller_push import *
 
 def draw_frame(pb_client, robot_id, link_index, xyz=(0,0,0), axis_length=.2):
     pb_client.addUserDebugLine(lineFromXYZ=(0,0,0)+np.asarray(xyz),
@@ -62,7 +61,7 @@ class KukaPushBlockEnv(gym.Env):
 
         ## Load URDF models
         self.plane_id = self.pb_client.loadURDF("plane.urdf")
-        self.robot_id = self.pb_client.loadURDF('robot_models_new/kuka_gripper.urdf',
+        self.robot_id = self.pb_client.loadURDF('research_main/envs/robot_models_new/kuka_gripper.urdf',
                                         basePosition=(0, 0, 0),
                                         globalScaling=1.0,
                                         useFixedBase=True)
@@ -236,23 +235,3 @@ class KukaPushBlockEnv(gym.Env):
 
     def close(self):
         pass
-
-if __name__ == "__main__":
-    with open('joint_torques_history.pkl', 'rb') as f:
-        joint_torques_history = pickle.load(f)
-
-    env = KukaPushBlockEnv(render_mode='GUI')
-    env.reset()
-    
-    for n in range(1000):
-        #print("Joint torques: ", joint_torques_history[n])
-        observation, reward, terminated, truncated, info = env.step(joint_torques_history[n])
-        if terminated == True:
-            break
-    
-    env.reset()
-    
-    for n in range(1000):
-        observation, reward, terminated, truncated, info = env.step(joint_torques_history[n])
-        
-    env.close()

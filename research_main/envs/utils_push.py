@@ -3,8 +3,9 @@ import pybullet_data
 import pybullet_utils.bullet_client as bc
 import numpy as np
 
-from kuka_dynamics import *
-from kuka_kinematics import *
+
+from research_main.envs.kuka_dynamics import *
+from research_main.envs.kuka_kinematics import *
 
 import control
 
