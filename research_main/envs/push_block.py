@@ -1,11 +1,13 @@
 import sys, pdb, argparse, time, pickle, itertools, json
 
 import numpy as np
+import pickle
 
 import pybullet as pb
 import pybullet_data
 
 import gymnasium as gym
+from gymnasium import spaces
 import tianshou as ts
 
 import argparse
@@ -65,7 +67,7 @@ class KukaPushBlockEnv(gym.Env):
                                         useFixedBase=True)
 
         self.block_ids = []
-        draw_frame(self.pb_client, plane_id, -1, xyz=(0,.5,0), axis_length=.5)
+        draw_frame(self.pb_client, self.plane_id, -1, xyz=(0,.5,0), axis_length=.5)
 
         # Observation space: joint positions (4), , joint velocities (4), block position (3), block position velocity (3), block orientation (3), block orientation velocity (3)
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(20,), dtype=np.float32)
@@ -77,7 +79,7 @@ class KukaPushBlockEnv(gym.Env):
       
         self.joint_angles_all = np.array(get_joint_angles(self.pb_client, self.robot_id))
       
-        self.joint_angles_partial = [self.joints_angle_all[i] for i in [0, 1, 3, 6]]
+        self.joint_angles_partial = np.array([self.joint_angles_all[i] for i in [0, 1, 3, 6]])
         self.joint_velocities_partial = (self.joint_angles_partial - self.prev_joint_angles_partial)/self.h
         self.prev_joint_angles_partial = self.joint_angles_partial
 
@@ -85,7 +87,7 @@ class KukaPushBlockEnv(gym.Env):
         self.block_position_velocity = (np.array(self.block_position) - np.array(self.prev_block_position))/self.h
         self.prev_block_position = self.block_position
 
-        self.block_orientation = pb.getQuaternionFromEuler(pb.getEulerFromQuaternion(self.block_orientation))
+        self.block_orientation = pb.getEulerFromQuaternion(self.block_orientation)
         self.block_orientation_velocity = (np.array(self.block_orientation) - np.array(self.prev_block_orientation))/self.h
         self.prev_block_orientation = self.block_orientation
 
@@ -114,7 +116,7 @@ class KukaPushBlockEnv(gym.Env):
 
         for _ in range(240):
             for i, value in enumerate(joint_values):
-                self.pb_client.setJointMotorControl2(bodyUniqueId=robot_id,
+                self.pb_client.setJointMotorControl2(bodyUniqueId=self.robot_id,
                                                 jointIndex=8+i,
                                                 targetPosition=value,
                                                 controlMode=pb.POSITION_CONTROL)
@@ -124,13 +126,13 @@ class KukaPushBlockEnv(gym.Env):
 
         for n in range(800):
             joint_values = np.zeros(7)
-            position = get_end_effector_pose(self.pb_client, robot_id)
+            position = get_end_effector_pose(self.pb_client, self.robot_id)
 
             for i, value in enumerate(joint_values):
-                joint_angle_control(self.pb_client, robot_id, i, value)
+                joint_angle_control(self.pb_client, self.robot_id, i, value)
 
             end_effector_position, end_effector_orientation = \
-                get_end_effector_pose(self.pb_client, robot_id)
+                get_end_effector_pose(self.pb_client, self.robot_id)
 
             end_effector_orientation = pb.getEulerFromQuaternion(end_effector_orientation)
 
@@ -138,7 +140,7 @@ class KukaPushBlockEnv(gym.Env):
             self.pb_client.stepSimulation()
 
 
-        if self.block_ids is not None:
+        if len(self.block_ids) > 0:
             self.pb_client.removeBody(self.block_ids[-1])
 
         self.block_ids.append(self.pb_client.loadURDF('parts/zenga_block.urdf',
@@ -151,10 +153,10 @@ class KukaPushBlockEnv(gym.Env):
         self.block_id = self.block_ids[-1]
 
         self.prev_joint_angles_all = np.array(get_joint_angles(self.pb_client, self.robot_id))
-        self.prev_joint_angles_partial = [self.prev_joint_angles_all[i] for i in [0, 1, 3, 6]]
+        self.prev_joint_angles_partial = np.array([self.prev_joint_angles_all[i] for i in [0, 1, 3, 6]])
 
         self.prev_block_position, self.prev_block_orientation = self.pb_client.getBasePositionAndOrientation(bodyUniqueId=self.block_id)
-        self.prev_block_orientation = pb.getQuaternionFromEuler(pb.getEulerFromQuaternion(self.prev_block_orientation))
+        self.prev_block_orientation = pb.getEulerFromQuaternion(self.prev_block_orientation)
 
         baseline_angle = 0.5585993153435626
         moving_direction = np.array((0-.35, .5-.4))
@@ -166,21 +168,21 @@ class KukaPushBlockEnv(gym.Env):
         time.sleep(1)
 
         for n in range(800):
-            joint_values = inverse_kinematics(pb_client, robot_id, 7, (starting_point[0], starting_point[1], .32), (0, np.pi, -np.pi/2+baseline_angle))[:8]
-            position = get_end_effector_pose(pb_client, robot_id)
+            joint_values = inverse_kinematics(self.pb_client, self.robot_id, 7, (starting_point[0], starting_point[1], .32), (0, np.pi, -np.pi/2+baseline_angle))[:8]
+            position = get_end_effector_pose(self.pb_client, self.robot_id)
 
             for i, value in enumerate(joint_values):
-                joint_angle_control(pb_client, robot_id, i, value)
+                joint_angle_control(self.pb_client, self.robot_id, i, value)
 
             end_effector_position, end_effector_orientation = \
-                get_end_effector_pose(pb_client, robot_id)
+                get_end_effector_pose(self.pb_client, self.robot_id)
 
             end_effector_orientation = pb.getEulerFromQuaternion(end_effector_orientation)
 
             self.previous_joint_values = joint_values
 
             time.sleep(1/240)
-            pb_client.stepSimulation()
+            self.pb_client.stepSimulation()
 
         observation = self._get_obs()
         info = self._get_info()
@@ -198,6 +200,7 @@ class KukaPushBlockEnv(gym.Env):
         pos_diff = np.linalg.norm(block_position[:2] - target_position[:2])
         ori_diff = np.linalg.norm(np.array(block_orientation) - target_orientation)
 
+        reward = -pos_diff - ori_diff
         if pos_diff < 0.01 and ori_diff < 0.01:
             reward += 100  # Big reward for reaching the target
 
@@ -209,9 +212,9 @@ class KukaPushBlockEnv(gym.Env):
         for i in range(7):
             for j in range(len(controlled_joints)):
                 if i == controlled_joints[j]:
-                    joint_torque_control(self.pb_client, robot_id, i, action[j])
+                    joint_torque_control(self.pb_client, self.robot_id, i, action[j])
                 else:
-                    joint_angle_control(self.pb_client, robot_id, i, self.previous_joint_values[i])
+                    joint_angle_control(self.pb_client, self.robot_id, i, self.previous_joint_values[i])
 
         time.sleep(1/240)
         self.pb_client.stepSimulation()
@@ -230,3 +233,17 @@ class KukaPushBlockEnv(gym.Env):
 
     def close(self):
         pass
+
+if __name__ == "__main__":
+    with open('joint_torques_history.pkl', 'rb') as f:
+        joint_torques_history = pickle.load(f)
+
+    env = KukaPushBlockEnv(render_mode='GUI')
+    env.reset()
+    
+    print("Length of joint torques array", len(joint_torques_history))
+    for n in range(1000):
+        print("Joint torques: ", joint_torques_history[n])
+        env.step(joint_torques_history[n])
+        #print("Observation: ", observation, "Reward: ", reward, "Info: ", info)
+    env.close()
