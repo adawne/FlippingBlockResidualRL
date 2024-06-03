@@ -59,7 +59,7 @@ class KukaPushBlockEnv(gym.Env):
 
         ## Load URDF models
         self.plane_id = self.pb_client.loadURDF("plane.urdf")
-        self.robot_id = self.pb_client.loadURDF('robot_models/kuka_gripper.urdf',
+        self.robot_id = self.pb_client.loadURDF('robot_models_new/kuka_gripper.urdf',
                                         basePosition=(0, 0, 0),
                                         globalScaling=1.0,
                                         useFixedBase=True)
