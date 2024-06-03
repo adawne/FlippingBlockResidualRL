@@ -10,6 +10,7 @@ from tianshou.trainer import OnpolicyTrainer
 from tianshou.utils.net.common import ActorCritic, Net
 from tianshou.utils.net.discrete import Actor, Critic
 
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
@@ -22,14 +23,14 @@ test_envs = DummyVectorEnv([lambda: gym.make("research_main/PushBlock-v0") for _
 assert env.observation_space.shape is not None  # for mypy
 net = Net(state_shape=env.observation_space.shape, hidden_sizes=[64, 64], device=device)
 
-assert isinstance(env.action_space, gym.spaces.Discrete)  # for mypy
+#assert isinstance(env.action_space, gym.spaces.Discrete)  # for mypy
 actor = Actor(preprocess_net=net, action_shape=env.action_space.n, device=device).to(device)
 critic = Critic(preprocess_net=net, device=device).to(device)
 actor_critic = ActorCritic(actor, critic)
 optim = torch.optim.Adam(actor_critic.parameters(), lr=0.0003)
 
 # PPO policy
-dist = torch.distributions.Categorical
+dist = torch.distributions.Normal
 policy: BasePolicy
 policy = PPOPolicy(
     actor=actor,

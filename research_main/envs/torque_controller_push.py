@@ -3,9 +3,8 @@ import pybullet as pb
 import control
 
 from kuka_dynamics import *
-from kuka_dynamics import iterative_ne_algorithm
-
 from utils_push import *
+
 
 arm_joint_indices = [0, 1, 2, 3, 4, 5, 6]
 

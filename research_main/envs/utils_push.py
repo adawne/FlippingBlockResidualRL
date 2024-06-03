@@ -5,6 +5,7 @@ import numpy as np
 
 from kuka_dynamics import *
 from kuka_kinematics import *
+
 import control
 
 arm_joint_indices = [0, 1, 2, 3, 4, 5, 6]

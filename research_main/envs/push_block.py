@@ -17,6 +17,7 @@ from pybullet_utils import bullet_client
 from utils_push import *
 from torque_controller_push import *
 
+
 def draw_frame(pb_client, robot_id, link_index, xyz=(0,0,0), axis_length=.2):
     pb_client.addUserDebugLine(lineFromXYZ=(0,0,0)+np.asarray(xyz),
                                lineToXYZ=(axis_length,0,0)+np.asarray(xyz),
@@ -191,7 +192,7 @@ class KukaPushBlockEnv(gym.Env):
         return observation, info
 
     def _compute_reward(self, observation):
-        target_position = np.array([0, 0.5, 0.1])
+        target_position = np.array([0, 0.5])
         target_orientation = np.array([0, 0, 0])
         
         block_position = observation[8:11]
@@ -210,11 +211,10 @@ class KukaPushBlockEnv(gym.Env):
     def step(self, action):
         controlled_joints = [0, 1, 3, 6]
         for i in range(7):
-            for j in range(len(controlled_joints)):
-                if i == controlled_joints[j]:
-                    joint_torque_control(self.pb_client, self.robot_id, i, action[j])
-                else:
-                    joint_angle_control(self.pb_client, self.robot_id, i, self.previous_joint_values[i])
+            if i in controlled_joints:
+                joint_torque_control(self.pb_client, self.robot_id, i, action[i])
+            else:
+                joint_angle_control(self.pb_client, self.robot_id, i, self.previous_joint_values[i])
 
         time.sleep(1/240)
         self.pb_client.stepSimulation()
@@ -226,8 +226,11 @@ class KukaPushBlockEnv(gym.Env):
 
         block_position = observation[8:11]
 
-        if block_position[0] < 0.35 and block_position[1] > 0.5:
+        if np.linalg.norm(block_position[:2] - np.array([0, 0.5])) < 0.02:
             terminated = True
+            print("Reached the target!")
+
+        print("Norm difference: ", np.linalg.norm(block_position[:2] - np.array([0, 0.5])))
 
         return observation, reward, terminated, False, info
 
@@ -241,9 +244,15 @@ if __name__ == "__main__":
     env = KukaPushBlockEnv(render_mode='GUI')
     env.reset()
     
-    print("Length of joint torques array", len(joint_torques_history))
     for n in range(1000):
-        print("Joint torques: ", joint_torques_history[n])
-        env.step(joint_torques_history[n])
-        #print("Observation: ", observation, "Reward: ", reward, "Info: ", info)
+        #print("Joint torques: ", joint_torques_history[n])
+        observation, reward, terminated, truncated, info = env.step(joint_torques_history[n])
+        if terminated == True:
+            break
+    
+    env.reset()
+    
+    for n in range(1000):
+        observation, reward, terminated, truncated, info = env.step(joint_torques_history[n])
+        
     env.close()
