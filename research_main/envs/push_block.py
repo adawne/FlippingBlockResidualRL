@@ -70,8 +70,8 @@ class KukaPushBlockEnv(gym.Env):
         draw_frame(self.pb_client, self.plane_id, -1, xyz=(0,.5,0), axis_length=.5)
 
         # Observation space: joint positions (4), , joint velocities (4), block position (3), block position velocity (3), block orientation (3), block orientation velocity (3)
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(20,), dtype=np.float32)
-        self.action_space = spaces.Box(low=-np.inf, high=np.inf, shape=(4,), dtype=np.float32)  # Actions for joints 0, 1, 3, 6
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(20,), dtype=np.float64)
+        self.action_space = spaces.Box(low=-np.inf, high=np.inf, shape=(4,), dtype=np.float64)  # Actions for joints 0, 1, 3, 6
 
         self.h = 1/240
 
@@ -105,8 +105,8 @@ class KukaPushBlockEnv(gym.Env):
             "block_orientation_velocity": self.block_orientation_velocity
         }
 
-    def reset(self):
-        with open('gripper_polyfit_coefficient.npy', 'rb') as f:
+    def reset(self, seed=None, options=None):
+        with open('research_main/envs/gripper_polyfit_coefficient.npy', 'rb') as f:
             poly_coefficient = np.load(f)
 
         gripper_control_map = np.poly1d(poly_coefficient)
@@ -143,7 +143,7 @@ class KukaPushBlockEnv(gym.Env):
         if len(self.block_ids) > 0:
             self.pb_client.removeBody(self.block_ids[-1])
 
-        self.block_ids.append(self.pb_client.loadURDF('parts/zenga_block.urdf',
+        self.block_ids.append(self.pb_client.loadURDF('research_main/envs/parts/zenga_block.urdf',
                                 basePosition=(.35, .4, .1),
                                 baseOrientation=pb.getQuaternionFromEuler([0, 0, 0]),
                                 # baseOrientation=pb.getQuaternionFromEuler([0, 0, 0]),

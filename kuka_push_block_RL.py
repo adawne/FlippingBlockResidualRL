@@ -2,59 +2,78 @@ import research_main
 
 import gymnasium as gym
 import torch
+import tianshou as ts
 
-from tianshou.data import Collector, VectorReplayBuffer
-from tianshou.env import DummyVectorEnv
-from tianshou.policy import BasePolicy, PPOPolicy
-from tianshou.trainer import OnpolicyTrainer
-from tianshou.utils.net.common import ActorCritic, Net
-from tianshou.utils.net.discrete import Actor, Critic
+from tianshou.data import Batch
+from tianshou.utils.net.common import Net
+from tianshou.trainer.onpolicy import onpolicy_trainer
 
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+MAX_EPOCH = 50
+STEPS_PER_EPOCH = 1_000
+BATCH_SIZE = 1
+LR = 0.005
+γ = 0.9999
+MAX_BUFFER_SIZE = 20_000 # This is max size of the buffer. In my case it only needs to be as long as a single episode
+                         # as I clear the buffer after every episode
+
+env = gym.make("research_main/PushBlock-v0", render_mode = 'GUI')
+
+state_shape = env.observation_space.shape or env.observation_space.n
+action_shape = env.action_space.shape or env.action_space.n
+net = Net(state_shape, action_shape, hidden_sizes=[64])
+optim = torch.optim.Adam(net.parameters(), lr=LR)
 
 
-# environments
-env = gym.make("research_main/PushBlock-v0")
-train_envs = DummyVectorEnv([lambda: gym.make("research_main/PushBlock-v0") for _ in range(20)])
-test_envs = DummyVectorEnv([lambda: gym.make("research_main/PushBlock-v0") for _ in range(10)])
+class Reinforce(ts.policy.BasePolicy):
+    def __init__(self, nn, optim, observation_space, action_space):
+        super().__init__(observation_space, action_space)
+        self.nn = nn
+        self.optim = optim
+        
+    def forward(self, batch: Batch, state=None, **kwargs):    
+        obs = batch.obs
+        logits, _ = self.nn(obs)
+        dist = torch.distributions.Categorical(logits=logits)
+        action = dist.sample()
+        
+        return Batch(act=action, state=None, logits=logits)
 
-# model & optimizer
-assert env.observation_space.shape is not None  # for mypy
-net = Net(state_shape=env.observation_space.shape, hidden_sizes=[64, 64], device=device)
+    def learn(self, batch, batch_size, repeat):
+        act, rew = batch.act, batch.rew
 
-#assert isinstance(env.action_space, gym.spaces.Discrete)  # for mypy
-actor = Actor(preprocess_net=net, action_shape=env.action_space.n, device=device).to(device)
-critic = Critic(preprocess_net=net, device=device).to(device)
-actor_critic = ActorCritic(actor, critic)
-optim = torch.optim.Adam(actor_critic.parameters(), lr=0.0003)
+        result = self(batch)
+        logits = result.logits
+        
+        dist = torch.distributions.Categorical(logits=logits)
+        act = torch.tensor(act, dtype=torch.float)
+        EligibilityVector = dist.log_prob(act)
+        
+        DiscountedReturns = []
+        for t in range(len(rew)):
+            G = 0.0
+            for k, r in enumerate(rew[t:]):
+                G += (γ**k)*r
+            DiscountedReturns.append(G)
 
-# PPO policy
-dist = torch.distributions.Normal
-policy: BasePolicy
-policy = PPOPolicy(
-    actor=actor,
-    critic=critic,
-    optim=optim,
-    dist_fn=dist,
-    action_space=env.action_space,
-    action_scaling=False,
-)
+        DiscountedReturns = torch.tensor(DiscountedReturns, dtype=torch.float)
+        loss = - torch.dot(EligibilityVector, DiscountedReturns)
 
-# collector
-train_collector = Collector(policy, train_envs, VectorReplayBuffer(20000, len(train_envs)))
-test_collector = Collector(policy, test_envs)
+        self.optim.zero_grad()
+        loss.backward()
+        self.optim.step()
 
-# trainer
-train_result = OnpolicyTrainer(
-    policy=policy,
-    batch_size=256,
-    train_collector=train_collector,
-    test_collector=test_collector,
-    max_epoch=10,
-    step_per_epoch=50000,
-    repeat_per_collect=10,
-    episode_per_test=10,
-    step_per_collect=2000,
-    stop_fn=lambda mean_reward: mean_reward >= 195,
-).run()
+        print(f'Reward={sum(rew)}')        
+        return {'loss': loss.item()}
+
+policy = Reinforce(net, optim, state_shape, action_shape)
+train_collector = ts.data.Collector(policy, env, ts.data.ReplayBuffer(MAX_BUFFER_SIZE))
+test_collector = ts.data.Collector(policy, env, ts.data.ReplayBuffer(MAX_BUFFER_SIZE))
+
+result = onpolicy_trainer(policy, train_collector, test_collector, 
+    max_epoch=MAX_EPOCH, step_per_epoch=STEPS_PER_EPOCH,
+    repeat_per_collect=1, episode_per_test=10,
+    episode_per_collect=1, batch_size=BATCH_SIZE)
+    
+FPS = 1/60.0
+train_collector.collect(n_episode=5, render=FPS)
