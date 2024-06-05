@@ -71,7 +71,7 @@ class KukaPushBlockEnv(gym.Env):
 
         # Observation space: joint positions (4), , joint velocities (4), block position (3), block position velocity (3), block orientation (3), block orientation velocity (3)
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(20,), dtype=np.float64)
-        self.action_space = spaces.Box(low=-np.inf, high=np.inf, shape=(4,), dtype=np.float64)  # Actions for joints 0, 1, 3, 6
+        self.action_space = spaces.Box(low=-1000, high=1000, shape=(4,), dtype=np.float64)  # Actions for joints 0, 1, 3, 6
 
         self.h = 1/240
 
@@ -209,10 +209,12 @@ class KukaPushBlockEnv(gym.Env):
 
     def step(self, action):
         controlled_joints = [0, 1, 3, 6]
+        
+        for idx, joint in enumerate(controlled_joints):
+            joint_torque_control(self.pb_client, self.robot_id, joint, action[idx])
+        
         for i in range(7):
-            if i in controlled_joints:
-                joint_torque_control(self.pb_client, self.robot_id, i, action[i])
-            else:
+            if i not in controlled_joints:
                 joint_angle_control(self.pb_client, self.robot_id, i, self.previous_joint_values[i])
 
         time.sleep(1/240)
@@ -227,9 +229,8 @@ class KukaPushBlockEnv(gym.Env):
 
         if np.linalg.norm(block_position[:2] - np.array([0, 0.5])) < 0.02:
             terminated = True
-            print("Reached the target!")
 
-        print("Norm difference: ", np.linalg.norm(block_position[:2] - np.array([0, 0.5])))
+        #print("Norm difference: ", np.linalg.norm(block_position[:2] - np.array([0, 0.5])))
 
         return observation, reward, terminated, False, info
 

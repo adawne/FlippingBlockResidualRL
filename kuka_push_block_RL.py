@@ -1,79 +1,97 @@
 import research_main
 
+import os
 import gymnasium as gym
-import torch
 import tianshou as ts
+import torch, numpy as np
+from torch import nn
 
 from tianshou.data import Batch
+from tianshou.policy.base import BasePolicy
+
 from tianshou.utils.net.common import Net
-from tianshou.trainer.onpolicy import onpolicy_trainer
+from tianshou.utils.net.continuous import Actor, Critic
+from torch.utils.tensorboard import SummaryWriter
+from tianshou.highlevel.logger import LoggerFactoryDefault
+from tianshou.utils import TensorboardLogger
 
+device = "cpu"
 
-MAX_EPOCH = 50
-STEPS_PER_EPOCH = 1_000
-BATCH_SIZE = 1
-LR = 0.005
-γ = 0.9999
-MAX_BUFFER_SIZE = 20_000 # This is max size of the buffer. In my case it only needs to be as long as a single episode
-                         # as I clear the buffer after every episode
-
+# Make an envurioment
 env = gym.make("research_main/PushBlock-v0", render_mode = 'GUI')
 
+# Setup vectorized environments
+train_envs = ts.env.DummyVectorEnv([lambda: gym.make('research_main/PushBlock-v0') for _ in range(2)])
+test_envs = ts.env.DummyVectorEnv([lambda: gym.make('research_main/PushBlock-v0') for _ in range(2)])
+
+# Set up the network
 state_shape = env.observation_space.shape or env.observation_space.n
 action_shape = env.action_space.shape or env.action_space.n
-net = Net(state_shape, action_shape, hidden_sizes=[64])
-optim = torch.optim.Adam(net.parameters(), lr=LR)
+hidden_sizes = [128, 128]
+actor_lr = 1e-3
+critic_lr = 1e-3
+max_action = env.action_space.high[0]
+
+print("Observations shape:", state_shape)
+print("Actions shape:", action_shape)
+print("Action range:", np.min(env.action_space.low), np.max(env.action_space.high))
+
+np.random.seed(0)
+torch.manual_seed(0)
+
+net_a = Net(state_shape=state_shape, hidden_sizes=hidden_sizes, device=device)
+actor = Actor(net_a, action_shape, hidden_sizes, max_action=max_action, device=device).to(device,)
+actor_optim = torch.optim.Adam(actor.parameters(), lr=actor_lr)
+net_c = Net(
+    state_shape=state_shape,
+    action_shape=action_shape,
+    hidden_sizes=hidden_sizes,
+    concat=True,
+    device=device,
+)
+critic = Critic(net_c, device=device).to(device)
+critic_optim = torch.optim.Adam(critic.parameters(), lr=critic_lr)
+
+# Set up policy
+policy = ts.policy.DDPGPolicy(
+        actor=actor,
+        actor_optim=actor_optim,
+        critic=critic,
+        critic_optim=critic_optim,
+        estimation_step=5,
+        action_space=env.action_space,
+    )
+
+# Set up the collector
+train_collector = ts.data.Collector(policy, train_envs, ts.data.VectorReplayBuffer(20000, 10), exploration_noise=True)
+test_collector = ts.data.Collector(policy, test_envs, exploration_noise=True)
+
+#writer = SummaryWriter('log/dqn')
+#logger = TensorboardLogger(writer)    
+
+writer = SummaryWriter('log/ddpg')
+logger = TensorboardLogger(writer)
 
 
-class Reinforce(ts.policy.BasePolicy):
-    def __init__(self, nn, optim, observation_space, action_space):
-        super().__init__(observation_space, action_space)
-        self.nn = nn
-        self.optim = optim
-        
-    def forward(self, batch: Batch, state=None, **kwargs):    
-        obs = batch.obs
-        logits, _ = self.nn(obs)
-        dist = torch.distributions.Categorical(logits=logits)
-        action = dist.sample()
-        
-        return Batch(act=action, state=None, logits=logits)
 
-    def learn(self, batch, batch_size, repeat):
-        act, rew = batch.act, batch.rew
+result = ts.trainer.OffpolicyTrainer(
+    policy=policy,
+    train_collector=train_collector,
+    test_collector=test_collector,
+    max_epoch=2, step_per_epoch=100, step_per_collect=10,
+    update_per_step=0.1, episode_per_test=100, batch_size=32,
+    logger=logger,
+    test_in_train=False,
+    verbose=True,
+    ).run()
 
-        result = self(batch)
-        logits = result.logits
-        
-        dist = torch.distributions.Categorical(logits=logits)
-        act = torch.tensor(act, dtype=torch.float)
-        EligibilityVector = dist.log_prob(act)
-        
-        DiscountedReturns = []
-        for t in range(len(rew)):
-            G = 0.0
-            for k, r in enumerate(rew[t:]):
-                G += (γ**k)*r
-            DiscountedReturns.append(G)
+print(f'Finished training! Use {result["duration"]}')
 
-        DiscountedReturns = torch.tensor(DiscountedReturns, dtype=torch.float)
-        loss = - torch.dot(EligibilityVector, DiscountedReturns)
+# Save policy
+torch.save(policy.state_dict(), 'ddpg.pth')
+policy.load_state_dict(torch.load('ddpg.pth'))
 
-        self.optim.zero_grad()
-        loss.backward()
-        self.optim.step()
 
-        print(f'Reward={sum(rew)}')        
-        return {'loss': loss.item()}
-
-policy = Reinforce(net, optim, state_shape, action_shape)
-train_collector = ts.data.Collector(policy, env, ts.data.ReplayBuffer(MAX_BUFFER_SIZE))
-test_collector = ts.data.Collector(policy, env, ts.data.ReplayBuffer(MAX_BUFFER_SIZE))
-
-result = onpolicy_trainer(policy, train_collector, test_collector, 
-    max_epoch=MAX_EPOCH, step_per_epoch=STEPS_PER_EPOCH,
-    repeat_per_collect=1, episode_per_test=10,
-    episode_per_collect=1, batch_size=BATCH_SIZE)
-    
-FPS = 1/60.0
-train_collector.collect(n_episode=5, render=FPS)
+policy.eval()
+collector = ts.data.Collector(policy, env, exploration_noise=True)
+collector.collect(n_episode=1, render=1 / 35)
