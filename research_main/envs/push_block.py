@@ -69,9 +69,9 @@ class KukaPushBlockEnv(gym.Env):
         self.block_ids = []
         draw_frame(self.pb_client, self.plane_id, -1, xyz=(0,.5,0), axis_length=.5)
 
-        # Observation space: joint positions (4), , joint velocities (4), block position (3), block position velocity (3), block orientation (3), block orientation velocity (3)
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(20,), dtype=np.float64)
-        self.action_space = spaces.Box(low=-1000, high=1000, shape=(4,), dtype=np.float64)  # Actions for joints 0, 1, 3, 6
+        # Observation space: joint positions (1), , joint velocities (1), block position (3), block position velocity (3)
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(8,), dtype=np.float64)
+        self.action_space = spaces.Box(low=-1000, high=1000, shape=(1,), dtype=np.float64)  # Actions for joint 0
 
         self.h = 1/240
 
@@ -79,7 +79,7 @@ class KukaPushBlockEnv(gym.Env):
       
         self.joint_angles_all = np.array(get_joint_angles(self.pb_client, self.robot_id))
       
-        self.joint_angles_partial = np.array([self.joint_angles_all[i] for i in [0, 1, 3, 6]])
+        self.joint_angles_partial = np.array([self.joint_angles_all[i] for i in [0]])
         self.joint_velocities_partial = (self.joint_angles_partial - self.prev_joint_angles_partial)/self.h
         self.prev_joint_angles_partial = self.joint_angles_partial
 
@@ -87,11 +87,7 @@ class KukaPushBlockEnv(gym.Env):
         self.block_position_velocity = (np.array(self.block_position) - np.array(self.prev_block_position))/self.h
         self.prev_block_position = self.block_position
 
-        self.block_orientation = pb.getEulerFromQuaternion(self.block_orientation)
-        self.block_orientation_velocity = (np.array(self.block_orientation) - np.array(self.prev_block_orientation))/self.h
-        self.prev_block_orientation = self.block_orientation
-
-        obs = np.concatenate([self.joint_angles_partial, self.joint_velocities_partial, self.block_position, self.block_position_velocity, self.block_orientation, self.block_orientation_velocity])
+        obs = np.concatenate([self.joint_angles_partial, self.joint_velocities_partial, self.block_position, self.block_position_velocity])
         
         return obs
 
@@ -100,9 +96,7 @@ class KukaPushBlockEnv(gym.Env):
             "joint_angles_partial": self.joint_angles_partial,
             "joint_velocities_partial": self.joint_velocities_partial,
             "block_position": self.block_position,
-            "block_position_velocity": self.block_position_velocity,
-            "block_orientation": self.block_orientation,
-            "block_orientation_velocity": self.block_orientation_velocity
+            "block_position_velocity": self.block_position_velocity
         }
 
     def reset(self, seed=None, options=None):
@@ -153,10 +147,9 @@ class KukaPushBlockEnv(gym.Env):
         self.block_id = self.block_ids[-1]
 
         self.prev_joint_angles_all = np.array(get_joint_angles(self.pb_client, self.robot_id))
-        self.prev_joint_angles_partial = np.array([self.prev_joint_angles_all[i] for i in [0, 1, 3, 6]])
+        self.prev_joint_angles_partial = np.array([self.prev_joint_angles_all[i] for i in [0]])
 
         self.prev_block_position, self.prev_block_orientation = self.pb_client.getBasePositionAndOrientation(bodyUniqueId=self.block_id)
-        self.prev_block_orientation = pb.getEulerFromQuaternion(self.prev_block_orientation)
 
         baseline_angle = 0.5585993153435626
         moving_direction = np.array((0-.35, .5-.4))
@@ -191,24 +184,23 @@ class KukaPushBlockEnv(gym.Env):
         return observation, info
 
     def _compute_reward(self, observation):
-        target_position = np.array([0, 0.5])
+        target_position = np.array([0.3, 0.5])
         target_orientation = np.array([0, 0, 0])
         
-        block_position = observation[8:11]
-        block_orientation = observation[14:17]
+        block_position = observation[2:5]
 
         pos_diff = np.linalg.norm(block_position[:2] - target_position[:2])
-        ori_diff = np.linalg.norm(np.array(block_orientation) - target_orientation)
 
-        reward = -pos_diff - ori_diff
-        if pos_diff < 0.01 and ori_diff < 0.01:
+        reward = (-pos_diff)*10
+        if pos_diff < 0.05:
             reward += 100  # Big reward for reaching the target
 
         return reward
 
 
     def step(self, action):
-        controlled_joints = [0, 1, 3, 6]
+        print("Action: ", action)
+        controlled_joints = [0]
         
         for idx, joint in enumerate(controlled_joints):
             joint_torque_control(self.pb_client, self.robot_id, joint, action[idx])
@@ -225,12 +217,14 @@ class KukaPushBlockEnv(gym.Env):
         info = self._get_info()
         terminated = False
 
-        block_position = observation[8:11]
+        block_position = observation[2:5]
+        print("Observation: ", observation)
 
-        if np.linalg.norm(block_position[:2] - np.array([0, 0.5])) < 0.02:
+        if np.linalg.norm(block_position[:2] - np.array([0.3, 0.5])) < 0.05:
             terminated = True
+            print("Reached the target!")
 
-        #print("Norm difference: ", np.linalg.norm(block_position[:2] - np.array([0, 0.5])))
+        #print("Norm difference: ", np.linalg.norm(block_position[:2] - np.array([0.3, 0.5])))
 
         return observation, reward, terminated, False, info
 

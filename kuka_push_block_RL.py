@@ -18,11 +18,11 @@ from tianshou.utils import TensorboardLogger
 device = "cpu"
 
 # Make an envurioment
-env = gym.make("research_main/PushBlock-v0", render_mode = 'GUI')
+env = gym.make("research_main/PushBlock-v0")
 
 # Setup vectorized environments
-train_envs = ts.env.DummyVectorEnv([lambda: gym.make('research_main/PushBlock-v0') for _ in range(2)])
-test_envs = ts.env.DummyVectorEnv([lambda: gym.make('research_main/PushBlock-v0') for _ in range(2)])
+train_envs = ts.env.DummyVectorEnv([lambda: gym.make('research_main/PushBlock-v0') for _ in range(1)])
+test_envs = ts.env.DummyVectorEnv([lambda: gym.make('research_main/PushBlock-v0') for _ in range(1)])
 
 # Set up the network
 state_shape = env.observation_space.shape or env.observation_space.n
@@ -60,10 +60,12 @@ policy = ts.policy.DDPGPolicy(
         critic_optim=critic_optim,
         estimation_step=5,
         action_space=env.action_space,
+        action_scaling=False,
+        action_bound_method=None,
     )
 
 # Set up the collector
-train_collector = ts.data.Collector(policy, train_envs, ts.data.VectorReplayBuffer(20000, 10), exploration_noise=True)
+train_collector = ts.data.Collector(policy, train_envs, ts.data.VectorReplayBuffer(20000, 1), exploration_noise=True)
 test_collector = ts.data.Collector(policy, test_envs, exploration_noise=True)
 
 #writer = SummaryWriter('log/dqn')
@@ -78,7 +80,7 @@ result = ts.trainer.OffpolicyTrainer(
     policy=policy,
     train_collector=train_collector,
     test_collector=test_collector,
-    max_epoch=2, step_per_epoch=100, step_per_collect=10,
+    max_epoch=2, step_per_epoch=200, step_per_collect=10,
     update_per_step=0.1, episode_per_test=100, batch_size=32,
     logger=logger,
     test_in_train=False,
