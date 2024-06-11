@@ -206,7 +206,6 @@ class KukaPushBlockEnv(gym.Env):
 
     def step(self, action):
         transformed_action = (action + 1) * 50 + 500
-        #print("Action: ", action, "Transformed action: ", transformed_action)
         controlled_joints = [0]
         
         for idx, joint in enumerate(controlled_joints):
@@ -227,6 +226,7 @@ class KukaPushBlockEnv(gym.Env):
         terminated = False
 
         #print("Action: ", action, "Joint angles: ", observation[:2], "Reward: ", reward)
+        print("Transformed action: ", transformed_action, "Joint angles: ", observation[:2], "Reward: ", reward)
 
         block_position = observation[2:5]
         block_position_velocity = observation[5:]
