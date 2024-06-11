@@ -71,7 +71,9 @@ class KukaPushBlockEnv(gym.Env):
 
         # Observation space: joint positions (1), , joint velocities (1), block position (3), block position velocity (3)
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(8,), dtype=np.float64)
-        self.action_space = spaces.Box(low=-1000, high=1000, shape=(1,), dtype=np.float64)  # Actions for joint 0
+        self.action_space = spaces.Box(low=-5, high=5, shape=(1,), dtype=np.float64)  # Actions for joint 0
+        
+        self.controlled_joint_torques = np.zeros(1)
 
         self.h = 1/240
 
@@ -157,7 +159,7 @@ class KukaPushBlockEnv(gym.Env):
         starting_point -= 0.01*np.array([np.cos(baseline_angle), np.sin(baseline_angle)])
         starting_point -= .4*moving_direction
 
-        print("Starting point: ", starting_point)
+        #print("Starting point: ", starting_point)
         time.sleep(1)
 
         for n in range(800):
@@ -188,22 +190,27 @@ class KukaPushBlockEnv(gym.Env):
         target_orientation = np.array([0, 0, 0])
         
         block_position = observation[2:5]
+        block_position_velocity = observation[5:]
 
-        pos_diff = np.linalg.norm(block_position[:2] - target_position[:2])
+        pos_diff = np.linalg.norm(block_position[1] - target_position[1])
 
-        reward = (-pos_diff)*10
-        if pos_diff < 0.05:
-            reward += 100  # Big reward for reaching the target
+        reward = (-pos_diff)* 1000
+        if pos_diff < 0.005:
+            if np.linalg.norm(block_position_velocity) < 0.5:
+                reward += 100 
+            else:
+                reward -= 100
 
         return reward
 
 
     def step(self, action):
-        print("Action: ", action)
+        transformed_action = (action + 1) * 50 + 500
+        #print("Action: ", action, "Transformed action: ", transformed_action)
         controlled_joints = [0]
         
         for idx, joint in enumerate(controlled_joints):
-            joint_torque_control(self.pb_client, self.robot_id, joint, action[idx])
+            joint_torque_control(self.pb_client, self.robot_id, joint, transformed_action[idx])
         
         for i in range(7):
             if i not in controlled_joints:
@@ -212,21 +219,29 @@ class KukaPushBlockEnv(gym.Env):
         time.sleep(1/240)
         self.pb_client.stepSimulation()
 
+        self.controlled_joint_torques = np.array([transformed_action])
+
         observation = self._get_obs()
         reward = self._compute_reward(observation)
         info = self._get_info()
         terminated = False
 
+        #print("Action: ", action, "Joint angles: ", observation[:2], "Reward: ", reward)
+
         block_position = observation[2:5]
-        print("Observation: ", observation)
+        block_position_velocity = observation[5:]
 
-        if np.linalg.norm(block_position[:2] - np.array([0.3, 0.5])) < 0.05:
+        if np.linalg.norm(block_position[1] - np.array([0.5])) < 0.005:
             terminated = True
-            print("Reached the target!")
-
-        #print("Norm difference: ", np.linalg.norm(block_position[:2] - np.array([0.3, 0.5])))
-
+            #print("Reached the target!")
+      
         return observation, reward, terminated, False, info
+
+    def render(self):
+        print("Block target position: ", self.block_target_position,
+            "Block position: ", self.block_position, "Block position difference norm: ", np.linalg.norm(self.block_position - self.block_target_position),
+            "Joint angles: ", self.joint_angles_partial, "Joint velocities: ", self.joint_velocities_partial, "Controlled joint torques: ", self.controlled_joint_torques)
+
 
     def close(self):
         pass

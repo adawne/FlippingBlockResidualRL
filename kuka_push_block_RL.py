@@ -8,6 +8,7 @@ from torch import nn
 
 from tianshou.data import Batch
 from tianshou.policy.base import BasePolicy
+from tianshou.exploration import GaussianNoise
 
 from tianshou.utils.net.common import Net
 from tianshou.utils.net.continuous import Actor, Critic
@@ -32,6 +33,7 @@ actor_lr = 1e-3
 critic_lr = 1e-3
 max_action = env.action_space.high[0]
 
+print("Max action:", max_action)
 print("Observations shape:", state_shape)
 print("Actions shape:", action_shape)
 print("Action range:", np.min(env.action_space.low), np.max(env.action_space.high))
@@ -58,10 +60,9 @@ policy = ts.policy.DDPGPolicy(
         actor_optim=actor_optim,
         critic=critic,
         critic_optim=critic_optim,
+        exploration_noise=GaussianNoise(sigma=0.1),
         estimation_step=5,
         action_space=env.action_space,
-        action_scaling=False,
-        action_bound_method=None,
     )
 
 # Set up the collector
@@ -71,29 +72,29 @@ test_collector = ts.data.Collector(policy, test_envs, exploration_noise=True)
 #writer = SummaryWriter('log/dqn')
 #logger = TensorboardLogger(writer)    
 
-writer = SummaryWriter('log/ddpg')
+writer = SummaryWriter('log/ddpg5')
 logger = TensorboardLogger(writer)
 
-
+print("Start training")
 
 result = ts.trainer.OffpolicyTrainer(
     policy=policy,
     train_collector=train_collector,
     test_collector=test_collector,
-    max_epoch=2, step_per_epoch=200, step_per_collect=10,
-    update_per_step=0.1, episode_per_test=100, batch_size=32,
+    max_epoch=5, step_per_epoch=2000, step_per_collect=10,
+    update_per_step=0.1, episode_per_test=100, batch_size=128,
     logger=logger,
     test_in_train=False,
     verbose=True,
     ).run()
 
-print(f'Finished training! Use {result["duration"]}')
+print('Finished training!')
 
 # Save policy
-torch.save(policy.state_dict(), 'ddpg.pth')
-policy.load_state_dict(torch.load('ddpg.pth'))
+torch.save(policy.state_dict(), 'ddpg5.pth')
+policy.load_state_dict(torch.load('ddpg5.pth'))
 
 
 policy.eval()
 collector = ts.data.Collector(policy, env, exploration_noise=True)
-collector.collect(n_episode=1, render=1 / 35)
+collector.collect(n_episode=1, render=0)
