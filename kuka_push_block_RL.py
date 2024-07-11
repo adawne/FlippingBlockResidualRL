@@ -19,11 +19,11 @@ from tianshou.utils import TensorboardLogger
 device = "cpu"
 
 # Make an envurioment
-env = gym.make("research_main/PushBlock-v0")
+env = gym.make("research_main/FlipBlock-v0")
 
 # Setup vectorized environments
-train_envs = ts.env.DummyVectorEnv([lambda: gym.make('research_main/PushBlock-v0') for _ in range(1)])
-test_envs = ts.env.DummyVectorEnv([lambda: gym.make('research_main/PushBlock-v0') for _ in range(1)])
+train_envs = ts.env.DummyVectorEnv([lambda: gym.make('research_main/FlipBlock-v0') for _ in range(1)])
+test_envs = ts.env.DummyVectorEnv([lambda: gym.make('research_main/FlipBlock-v0') for _ in range(1)])
 
 # Set up the network
 state_shape = env.observation_space.shape or env.observation_space.n

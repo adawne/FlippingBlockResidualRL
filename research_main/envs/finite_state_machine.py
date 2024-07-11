@@ -1,17 +1,38 @@
 import numpy as np
-from utils_push_mujoco import *
+from utils import *
 
 class FiniteStateMachine:
-    def __init__(self):
-        self.state = 'move_to_target'
+    def __init__(self, model):
+        self.state = 'initial_pose'
         self.move_to_next_state = True
         self.iteration = 0
-    
-    def update(self, data, current_position):
-        if self.state == 'move_to_target':
+        self.has_block_released = False
+        
+        self.shoulder_pan_id = model.joint('shoulder_pan_joint').id
+        self.shoulder_lift_id = model.joint('shoulder_lift_joint').id
+        self.elbow_id = model.joint('elbow_joint').id
+        self.wrist_1_id = model.joint('wrist_1_joint').id
+        self.wrist_2_id = model.joint('wrist_2_joint').id
+        self.wrist_3_id = model.joint('wrist_3_joint').id
+
+        self.passive_flipping_actuators = [self.shoulder_pan_id, self.shoulder_lift_id, self.wrist_2_id, self.wrist_3_id]
+        self.passive_motors = ActuatorController(self.passive_flipping_actuators)
+        self.passive_motors.switch_to_position_controller(model)
+        self.passive_motor_angles_hold = np.zeros(len(self.passive_flipping_actuators))
+        
+        self.active_flipping_actuators = [self.elbow_id, self.wrist_1_id]
+        self.has_gripper_opened = False 
+
+
+    def reset_pose(self, model, data, current_position):
+        self.has_block_released = False
+        self.active_motors = ActuatorController(self.active_flipping_actuators)
+        self.active_motors.switch_to_position_controller(model)
+
+        if self.state == 'initial_pose':
             self.move_to_next_state = False
             self.target_position = [0.5, 0.5, 0.4]
-            self.target_orientation = [0, -np.pi, 0]   
+            self.target_orientation = [np.pi/2, -np.pi, 0]   
 
             if np.linalg.norm(np.subtract(current_position, self.target_position)) < 0.015:
                     self.move_to_next_state = True
@@ -19,11 +40,13 @@ class FiniteStateMachine:
         
         elif self.state == 'approach_block':
             self.move_to_next_state = False
-            self.target_position = [0.5, 0.5, 0.3]
+            self.target_position = [0.5, 0.5, 0.28]
+            self.iteration += 1
             gripper_open(data)
 
-            if np.linalg.norm(np.subtract(current_position, self.target_position)) < 0.015:
+            if np.linalg.norm(np.subtract(current_position, self.target_position)) < 0.015 :
                 self.move_to_next_state = True
+                self.iteration = 0
                 self.state = 'grasp_block'
 
         elif self.state == 'grasp_block':
@@ -38,20 +61,86 @@ class FiniteStateMachine:
 
         elif self.state == 'lift_block':
             self.move_to_next_state = False
-            self.target_position = [0.5, 0.5, 0.7]
-                
-            #if np.linalg.norm(np.subtract(current_position, self.target_position)) < 0.015:
-                #self.move_to_next_state = True
-                #self.state = 'release_block'
-
-
-        elif self.state == 'release_block':
             self.iteration += 1
+            self.target_position = [0.5, 0.5, 0.7]
+                 
+            if (np.linalg.norm(np.subtract(current_position, self.target_position)) < 0.02):
+                self.move_to_next_state = True
+                self.iteration = 0
+                self.state = 'pre_flip_block'
 
-            if self.iteration > 1000:
+
+        elif self.state == 'pre_flip_block':
+            self.move_to_next_state = False
+            self.iteration += 1
+            moving_actuators = [self.shoulder_lift_id, self.wrist_3_id]
+            target_angles = [-1.25, 0]
+
+            set_joint_states(data, moving_actuators, target_angles)
+            #print(np.linalg.norm(np.subtract(get_specific_joint_angles(data, moving_actuators), target_angles)))
+
+            if (np.linalg.norm(np.subtract(get_specific_joint_angles(data, moving_actuators), target_angles)) < 0.02):
+                self.move_to_next_state = True
+                self.iteration = 0
+                #print("Prepare to flip block: ", data.time, get_block_pose(model, data, 'block_0')[1])
+                self.passive_motor_angles_hold = get_specific_joint_angles(data, self.passive_flipping_actuators)
+                self.state = 'flip_block'
+                #print("Prepare to flip block: ", get_specific_joint_angles(data, self.active_flipping_actuators))
+
+        elif self.state == 'post_flip_block':
+            self.state = 'initial_pose'
+
+        if self.state not in ['pre_flip_block']:
+            move_ee_to_point(model, data, self.target_position, self.target_orientation)
+
+        return self.state
+
+    def do_flip(self, model, data, action):
+        elbow_velocity = action["elbow_velocity"]
+        wrist_1_velocity = action["wrist_1_velocity"]
+        release = action["release"]
+
+        if self.state == 'flip_block':
+            #if self.print_iteration == 0:
+            #    print("Begin flipping block: ", get_specific_joint_angles(data, self.active_flipping_actuators))
+            #    self.print_iteration += 1
+
+            self.active_motors.switch_to_velocity_controller(model)
+            
+            self.move_to_next_state = False
+            moving_actuators = self.active_flipping_actuators
+            
+            target_velocities = [elbow_velocity, wrist_1_velocity] #Worked: -np.pi/2, -np.pi (but not rotated)
+            stop_velocities = [0, 0]
+
+            set_joint_states(data, self.passive_flipping_actuators, self.passive_motor_angles_hold)
+            set_joint_states(data, moving_actuators, target_velocities)
+
+            if release == 1:
+                set_joint_states(data, moving_actuators, stop_velocities)
                 gripper_open(data)
-            
+                self.has_gripper_opened = True
+                self.iteration += 1
+                if self.iteration > 50:
+                    self.has_block_released = True
+                    self.move_to_next_state = True
+                    self.iteration = 0
+                    self.state = 'move_back'
 
-        #print(self.state)
-            
-        return self.target_position, self.target_orientation, self.move_to_next_state, self.iteration
+        elif self.state == 'move_back':
+            self.move_to_next_state = False
+            moving_actuators = [self.shoulder_pan_id]
+ 
+            target_angles = [-2]
+            current_elbow_angles = get_specific_joint_angles(data, [self.shoulder_pan_id])
+
+            set_joint_states(data, moving_actuators, target_angles)
+
+            if (np.linalg.norm(np.subtract(get_specific_joint_angles(data, moving_actuators), target_angles)) < 0.02):
+                self.move_to_next_state = True
+                self.iteration = 0
+                #print("Prepare to flip block: ", data.time, get_block_pose(model, data, 'block_0')[1])
+                self.passive_motor_angles_hold = get_specific_joint_angles(data, self.passive_flipping_actuators)
+                self.state = 'post_flip_block'
+
+        

@@ -1,1 +1,1 @@
-from research_main.envs.push_block import KukaPushBlockEnv
+from research_main.envs.FlippingEnv import URFlipBlockEnv
