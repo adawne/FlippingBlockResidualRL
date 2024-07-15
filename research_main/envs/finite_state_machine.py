@@ -1,5 +1,7 @@
 import numpy as np
-from utils import *
+from research_main.envs.utils import *
+
+#from utils import *
 
 class FiniteStateMachine:
     def __init__(self, model):
@@ -21,7 +23,9 @@ class FiniteStateMachine:
         self.passive_motor_angles_hold = np.zeros(len(self.passive_flipping_actuators))
         
         self.active_flipping_actuators = [self.elbow_id, self.wrist_1_id]
-        self.has_gripper_opened = False 
+        self.has_gripper_opened = False
+
+        self.print_iteration = 0 
 
 
     def reset_pose(self, model, data, current_position):
@@ -96,9 +100,12 @@ class FiniteStateMachine:
         return self.state
 
     def do_flip(self, model, data, action):
-        elbow_velocity = action["elbow_velocity"]
-        wrist_1_velocity = action["wrist_1_velocity"]
-        release = action["release"]
+        elbow_discrete_action = action[0]
+        wrist_1_discrete_action = action[1]
+        release = action[2]
+
+        elbow_velocity = map_to_velocity(elbow_discrete_action)
+        wrist_1_velocity = map_to_velocity(wrist_1_discrete_action)
 
         if self.state == 'flip_block':
             #if self.print_iteration == 0:
@@ -115,13 +122,18 @@ class FiniteStateMachine:
 
             set_joint_states(data, self.passive_flipping_actuators, self.passive_motor_angles_hold)
             set_joint_states(data, moving_actuators, target_velocities)
+            #print("Block pose: ", get_block_pose(model, data, 'block_0')[0])
+
 
             if release == 1:
                 set_joint_states(data, moving_actuators, stop_velocities)
                 gripper_open(data)
                 self.has_gripper_opened = True
                 self.iteration += 1
+                self.print_iteration += 1
+
                 if self.iteration > 50:
+                    #print("Block released: ", get_block_pose(model, data, 'block_0')[0])           
                     self.has_block_released = True
                     self.move_to_next_state = True
                     self.iteration = 0
@@ -129,18 +141,27 @@ class FiniteStateMachine:
 
         elif self.state == 'move_back':
             self.move_to_next_state = False
-            moving_actuators = [self.shoulder_pan_id]
+
+            moving_velocity_actuators = [self.elbow_id, self.wrist_1_id]
+            moving_position_actuators = [self.shoulder_pan_id]
  
-            target_angles = [-2]
-            current_elbow_angles = get_specific_joint_angles(data, [self.shoulder_pan_id])
+            target_velocity = [np.pi, np.pi]
+            target_position = [0]
+            
+            stop_elbow_angle = 2.4
+            current_elbow_angles = get_specific_joint_angles(data, [self.elbow_id])
 
-            set_joint_states(data, moving_actuators, target_angles)
+            #print("Joint velocities: ", get_joint_velocities(data))
 
-            if (np.linalg.norm(np.subtract(get_specific_joint_angles(data, moving_actuators), target_angles)) < 0.02):
+            set_joint_states(data, moving_velocity_actuators, target_velocity)
+            set_joint_states(data, moving_position_actuators, target_position)
+
+            if (np.linalg.norm(np.subtract(get_specific_joint_angles(data, [self.elbow_id]), stop_elbow_angle)) < 0.02):
                 self.move_to_next_state = True
                 self.iteration = 0
-                #print("Prepare to flip block: ", data.time, get_block_pose(model, data, 'block_0')[1])
-                self.passive_motor_angles_hold = get_specific_joint_angles(data, self.passive_flipping_actuators)
+            #    #print("Prepare to flip block: ", data.time, get_block_pose(model, data, 'block_0')[1])
+            #    self.passive_motor_angles_hold = get_specific_joint_angles(data, self.passive_flipping_actuators)
                 self.state = 'post_flip_block'
+                set_joint_states(data, moving_velocity_actuators, [0, 0])
 
         

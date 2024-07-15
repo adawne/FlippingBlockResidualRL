@@ -9,11 +9,21 @@ import gymnasium as gym
 from gymnasium import spaces
 import matplotlib.pyplot as plt
 
-from utils import *
-from scene_builder import *
-from finite_state_machine import *
+from gymnasium.utils.env_checker import check_env
+
+from gymnasium.spaces.utils import flatten_space, flatten, unflatten
+from research_main.envs.utils import *
+from research_main.envs.scene_builder import *
+from research_main.envs.finite_state_machine import *
+
+#from utils import *
+#from scene_builder import *
+#from finite_state_machine import *
+
 
 class URFlipBlockEnv(gym.Env):
+    metadata = {"render_modes": ["livecam", "video"], "contact_vis": [True, False]}
+
     def __init__(self, render_mode=None, contact_vis=None):
         block_positions_orientations = [([0.5, 0.5, 0.1], [np.pi/2, 0, 0])]
         world_xml_model = create_ur_model(marker_position=None, block_positions_orientations=block_positions_orientations)
@@ -52,13 +62,18 @@ class URFlipBlockEnv(gym.Env):
             self.model.vis.map.force = 0.3
 
         # Observation space: joint positions (2), joint velocities (2), block orientation (3)
+        #Action space: elbow velocity, wrist 1 velocity, release
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(7,), dtype=np.float64)
-        self.action_space = spaces.Dict({
-            "elbow_velocity": spaces.Box(low=-np.pi, high=0, shape=(1,), dtype=np.float64),
-            "wrist_1_velocity": spaces.Box(low=-np.pi, high=0, shape=(1,), dtype=np.float64),
-            "release": spaces.MultiBinary(1)
-        })
+        self.action_space = spaces.MultiDiscrete([21, 21, 2])
+        #self.action_space = spaces.Dict({
+        #    "elbow_velocity": spaces.Box(low=-np.pi, high=0, shape=(1,), dtype=np.float64),
+        #    "wrist_1_velocity": spaces.Box(low=-np.pi, high=0, shape=(1,), dtype=np.float64),
+        #    "release": spaces.MultiBinary(1)
+        #})
+        #self.action_space = flatten_space(original_action_space)
+        #print("Action space:", self.action_space)
         
+        #self.original_action_space = original_action_space
         self.has_block_landed = False
 
     def reset(self, seed=None, options=None):
@@ -86,6 +101,7 @@ class URFlipBlockEnv(gym.Env):
         self.force_reset = False
         self.block_orientation_hist = []
         self.block_contact_hist = np.empty((0, 2))
+        self.block_height_hist = []
         
         observation = self._get_obs()
         info = self._get_info()
@@ -125,17 +141,25 @@ class URFlipBlockEnv(gym.Env):
         return reward
 
     def step(self, action):
+        #print("Action: ", action)
+        #original_action = unflatten(self.original_action_space, action)
+
         self.fsm.do_flip(self.model, self.data, action)
         mujoco.mj_step(self.model, self.data)
 
         if self.fsm.has_block_released:
-            _, block_orientation = get_block_pose(self.model, self.data, 'block_0')
+            block_position, block_orientation = get_block_pose(self.model, self.data, 'block_0')
             self.block_orientation_hist.append(block_orientation)
             
-            new_contacts = detect_block_contact(self.data)
-            if new_contacts:
-                self.block_contact_hist = np.vstack([self.block_contact_hist, new_contacts])
-            
+            if len(self.block_height_hist) < 4:
+                self.block_height_hist.append(block_position[2])
+
+            if len(self.block_height_hist) == 3:
+                if is_block_declining(self.block_height_hist):
+                    new_contacts = detect_block_contact(self.data)
+                    if new_contacts:
+                        self.block_contact_hist = np.vstack([self.block_contact_hist, new_contacts])
+                    
             block_trans_velocity, block_ang_velocity = get_block_velocity(self.data)
             if block_trans_velocity < 0.01 and block_ang_velocity < 0.001:
                 self.has_block_landed = True
@@ -164,7 +188,7 @@ class URFlipBlockEnv(gym.Env):
         elif self.render_mode == 'video':
             if len(self.frames) < self.data.time * self.framerate:
                 self.camera.distance = 4
-                self.camera.azimuth = 180
+                self.camera.azimuth = 150
                 self.camera.elevation = -30
                 if self.contact_vis is not None:
                     self.renderer.update_scene(self.data, self.camera, self.options)
@@ -202,30 +226,22 @@ class URFlipBlockEnv(gym.Env):
             "block_landed": self.has_block_landed,
         }
 
-if __name__ == "__main__":
-    def get_action(observation, env, episode):
-        release_elbow_angle = 0.75
+    def seed(self, seed):
+        np.random.seed(seed)
+
+def manual_test():
+    def get_action(observation):
+        release_elbow_angle = 0.9
         elbow_angle = observation[0] 
 
         if elbow_angle < release_elbow_angle:
             if episode % 2 != 0:
-                action = {
-                    "elbow_velocity": np.array([0]),  
-                    "wrist_1_velocity": np.array([0]),  
-                    "release": np.array([0])
-                }
+                action = [0, 0, 0]
+ 
             else:
-                action = {
-                    "elbow_velocity": np.array([0]),  
-                    "wrist_1_velocity": np.array([0]),  
-                    "release": np.array([1])
-                }
+                action = [0, 0, 1]
         else:
-            action = {
-                "elbow_velocity": np.array([-np.pi/2]),  
-                "wrist_1_velocity": np.array([-4*np.pi/5]),  
-                "release": np.array([0])
-            }
+            action = [20, 20, 0]
         return action
 
     num_episodes = 1
@@ -243,11 +259,13 @@ if __name__ == "__main__":
 
         total_reward = 0
         done = False
+        action_call = 0
 
         while not done:
             #print(env.force_reset, env.state)
             
-            action = get_action(observation, env, episode)
+            action = get_action(observation)
+            action_call += 1
 
             observation, reward, terminated, truncated, info = env.step(action)
 
@@ -272,6 +290,13 @@ if __name__ == "__main__":
     env.close()
 
     # Print the rewards for all episodes
+    print("Action calls:", action_call)
     print("Episode rewards:", episode_rewards)
     print("Average reward over episodes:", np.mean(episode_rewards))
 
+
+#if __name__ == "__main__":
+    #env = URFlipBlockEnv()
+    #check_env(env, skip_render_check=False)
+    #print(env.action_space.sample())
+    #manual_test()

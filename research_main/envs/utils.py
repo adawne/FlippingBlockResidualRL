@@ -1,13 +1,9 @@
 import numpy as np
 import mujoco
 import os
-import ikpy.chain
-import roboticstoolbox as rtb
-import ur10e_ikfast
 
 from scipy.spatial.transform import Rotation as R
-from pyquaternion import Quaternion
-from ur_ikfast import ur_kinematics
+
 
 
 class ActuatorController:
@@ -212,11 +208,9 @@ def has_rotated(orientation_history):
 
 def detect_block_contact(data):
     """
-    Detects contact between the block and the robot, ignoring contacts between the block and the floor.
+    Detects contact between the block and the robot, ignoring all contacts involving the floor.
     Returns a list of lists with geom1_id and geom2_id for each contact.
     """
-    blue_subbox_id = data.geom("blue_subbox").id
-    orange_subbox_id = data.geom("orange_subbox").id
     floor_id = data.geom("floor").id
 
     contacts = []
@@ -227,8 +221,8 @@ def detect_block_contact(data):
         geom1_id = contact.geom1
         geom2_id = contact.geom2
         
-        if (geom1_id in [blue_subbox_id, orange_subbox_id] and geom2_id != floor_id) or \
-           (geom2_id in [blue_subbox_id, orange_subbox_id] and geom1_id != floor_id):
+        # Ignore all contacts involving the floor
+        if geom1_id != floor_id and geom2_id != floor_id:
             contacts.append([geom1_id, geom2_id])
 
     return contacts
@@ -244,7 +238,6 @@ def has_hit_robot(data, block_contact_hist):
     for contact in block_contact_hist:
         geom1_id, geom2_id = contact
         
-        # Assuming all robot geoms have IDs that are not blue_subbox_id, orange_subbox_id, or floor_id
         if (geom1_id not in [blue_subbox_id, orange_subbox_id, floor_id] and
             geom2_id in [blue_subbox_id, orange_subbox_id]) or \
            (geom2_id not in [blue_subbox_id, orange_subbox_id, floor_id] and
@@ -252,6 +245,13 @@ def has_hit_robot(data, block_contact_hist):
             return True
 
     return False
+
+def is_block_declining(block_height_hist):
+    for i in range(1, len(block_height_hist)):
+        if block_height_hist[i] < block_height_hist[i-1]:
+            return True
+        else:
+            return False
     
 def reset_block_position(model, data):
     target_position = np.array([0.5, 0.5, 0.1])
@@ -262,3 +262,9 @@ def reset_block_position(model, data):
     data.joint("block_joint").qvel = np.zeros(6)
     #data.qpos[14:17] = target_position
     #data.qpos[17:21] = target_orientation_quat
+
+def map_to_velocity(action):
+    if action == 0:
+        return 0
+    else:
+        return -action*np.pi/20

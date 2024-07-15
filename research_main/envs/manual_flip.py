@@ -5,8 +5,6 @@ import mujoco.viewer
 import mediapy as media
 import cv2
 
-import gymnasium as gym
-from gymnasium import spaces
 import matplotlib.pyplot as plt
 
 from utils import *
@@ -92,9 +90,9 @@ def main(render_mode=None, contact_vis=None):
                     "release": np.array([0]) 
                     }
 
-            state, has_block_released = fsm.do_flip(model, data, action)
+            fsm.do_flip(model, data, action)
 
-            if has_block_released:
+            if fsm.has_block_released:
                 _, block_orientation = get_block_pose(model, data, 'block_0')
                 block_orientation_hist.append(block_orientation)
                 block_trans_velocity, block_ang_velocity = get_block_velocity(data)
@@ -140,4 +138,4 @@ def main(render_mode=None, contact_vis=None):
 
 
 if __name__ == "__main__":
-    main(render_mode=None)
+    main(render_mode='video')
