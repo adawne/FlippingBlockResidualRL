@@ -137,15 +137,19 @@ def train_dqn(args=get_args()):
         verbose=True,
         logger=logger
     ).run()
+
+    torch.save(policy.state_dict(), 'Flipping_DQN.pth')
+    
     
     if __name__ == "__main__":
         pprint.pprint(result)
         env = DummyVectorEnv([lambda: MultiDiscreteToDiscrete(gym.make("research_main/FlipBlock-v0"))])
+        policy.load_state_dict(torch.load('Flipping_DQN.pth'))
         policy.eval()
         policy.set_eps(args.eps_test)
-        collector = Collector(policy, env)
+        collector = ts.data.Collector(policy, env)
         result = collector.collect(n_episode=args.test_num)
-        rews, lens = result["rews"], result["lens"]
+        rews, lens = result.returns, result.lens
         print(f"Final reward: {rews.mean()}, length: {lens.mean()}")
 
 if __name__ == "__main__":
