@@ -116,26 +116,26 @@ class URFlipBlockEnv(gym.Env):
         #    return -300
 
         if has_hit_robot(self.data, self.block_contact_hist):
-            print("Robot hit by block.")
+            #print("Robot hit by block.")
             reward += -150
 
         block_position, _ = get_block_pose(self.model, self.data, 'block_0')
         if block_position[0] < 0:
-            print("Block went out of bounds.")
+            #print("Block went out of bounds.")
             reward += -200
 
         if reward == 0:
             if has_rotated(self.block_orientation_hist) and has_flipped(self.data):
-                print("Block successfully flipped.")
+                #print("Block successfully flipped.")
                 reward += 100
             elif has_flipped(self.data):
-                print("Block flipped but not rotated.")
+                #print("Block flipped but not rotated.")
                 reward += -50
             elif has_rotated(self.block_orientation_hist):
-                print("Block rotated but not flipped.")
+                #print("Block rotated but not flipped.")
                 reward += 30
             else:
-                print("Block not flipped or rotated.")
+                #print("Block not flipped or rotated.")
                 reward += -100
 
         return reward

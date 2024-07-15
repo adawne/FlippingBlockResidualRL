@@ -1,0 +1,45 @@
+
+Epoch #1: 1001it [00:00, 1247.73it/s, env_step=1000, gradient_step=100, len=0, n/ep=0, n/st=1000, rew=0.00]
+Epoch #2: 100%|##############################################################################################################################################################| 1000/1000 [00:00<00:00, 2686.99it/s]
+
+Epoch #2: 1001it [00:00, 1597.16it/s, env_step=2000, gradient_step=200, len=0, n/ep=0, n/st=1000, rew=0.00]
+Epoch #3:   0%|                                                                                                                                                                           | 0/1000 [00:00<?, ?it/s]
+
+Epoch #3: 1001it [00:01, 928.75it/s, env_step=3000, gradient_step=300, len=291, n/ep=1, n/st=1000, rew=-100.00]
+Traceback (most recent call last):
+  File "/home/ubuntu/code/UR10FlippingBlockRL/train_dqn.py", line 152, in <module>
+    train_dqn()
+  File "/home/ubuntu/code/UR10FlippingBlockRL/train_dqn.py", line 139, in train_dqn
+    ).run()
+      ^^^^^
+  File "/home/ubuntu/miniconda3/envs/RL_env/lib/python3.11/site-packages/tianshou/trainer/base.py", line 526, in run
+    deque(self, maxlen=0)  # feed the entire iterator into a zero-length deque
+    ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/miniconda3/envs/RL_env/lib/python3.11/site-packages/tianshou/trainer/base.py", line 359, in __next__
+    test_stat, self.stop_fn_flag = self.test_step()
+                                   ^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/miniconda3/envs/RL_env/lib/python3.11/site-packages/tianshou/trainer/base.py", line 389, in test_step
+    test_stat = test_episode(
+                ^^^^^^^^^^^^^
+  File "/home/ubuntu/miniconda3/envs/RL_env/lib/python3.11/site-packages/tianshou/trainer/utils.py", line 34, in test_episode
+    result = collector.collect(n_episode=n_episode)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/miniconda3/envs/RL_env/lib/python3.11/site-packages/tianshou/data/collector.py", line 323, in collect
+    self.data.update(
+  File "/home/ubuntu/miniconda3/envs/RL_env/lib/python3.11/site-packages/tianshou/data/batch.py", line 834, in update
+    self.update(kwargs)
+  File "/home/ubuntu/miniconda3/envs/RL_env/lib/python3.11/site-packages/tianshou/data/batch.py", line 837, in update
+    self.__dict__[batch_key] = _parse_value(obj)
+                               ^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/miniconda3/envs/RL_env/lib/python3.11/site-packages/tianshou/data/batch.py", line 163, in _parse_value
+    obj = Batch(obj)  # list of dict / Batch
+          ^^^^^^^^^^
+  File "/home/ubuntu/miniconda3/envs/RL_env/lib/python3.11/site-packages/tianshou/data/batch.py", line 419, in __init__
+    self.stack_(batch_dict)
+  File "/home/ubuntu/miniconda3/envs/RL_env/lib/python3.11/site-packages/tianshou/data/batch.py", line 738, in stack_
+    keys_map = [
+               ^
+  File "/home/ubuntu/miniconda3/envs/RL_env/lib/python3.11/site-packages/tianshou/data/batch.py", line 741, in <listcomp>
+    for batch_key, obj in batch.items()
+                          ^^^^^^^^^^^^^
+KeyboardInterrupt
