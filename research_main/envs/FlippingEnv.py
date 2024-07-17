@@ -4,21 +4,20 @@ import mujoco
 import mujoco.viewer
 import mediapy as media
 import cv2
-
 import gymnasium as gym
-from gymnasium import spaces
 import matplotlib.pyplot as plt
 
+from gymnasium import spaces
 from gymnasium.utils.env_checker import check_env
-
 from gymnasium.spaces.utils import flatten_space, flatten, unflatten
-from research_main.envs.utils import *
-from research_main.envs.scene_builder import *
-from research_main.envs.finite_state_machine import *
 
-#from utils import *
-#from scene_builder import *
-#from finite_state_machine import *
+#from research_main.envs.utils import *
+#from research_main.envs.scene_builder import *
+#from research_main.envs.finite_state_machine import *
+
+from utils import *
+from scene_builder import *
+from finite_state_machine import *
 
 
 class URFlipBlockEnv(gym.Env):
@@ -143,37 +142,26 @@ class URFlipBlockEnv(gym.Env):
     def step(self, action):
         #print("Action: ", action)
         #original_action = unflatten(self.original_action_space, action)
+        terminated = True if(action[2] == 1 or self.data.time > 8) else False
 
         self.fsm.do_flip(self.model, self.data, action)
         mujoco.mj_step(self.model, self.data)
 
-        if self.fsm.has_block_released:
-            block_position, block_orientation = get_block_pose(self.model, self.data, 'block_0')
-            self.block_orientation_hist.append(block_orientation)
-            
-            if len(self.block_height_hist) < 4:
-                self.block_height_hist.append(block_position[2])
-
-            if len(self.block_height_hist) == 3:
-                if is_block_declining(self.block_height_hist):
-                    new_contacts = detect_block_contact(self.data)
-                    if new_contacts:
-                        self.block_contact_hist = np.vstack([self.block_contact_hist, new_contacts])
-                    
-            block_trans_velocity, block_ang_velocity = get_block_velocity(self.data)
-            if block_trans_velocity < 0.01 and block_ang_velocity < 0.001:
-                self.has_block_landed = True
-
-        terminated = True if( self.has_block_landed or self.data.time > 8) else False
-        if terminated and self.fsm.has_gripper_opened == False:
-            self.fsm.state = 'post_flip_block'
-            reward = -300
-        else:
-            reward = self._compute_reward() if self.has_block_landed else 0
-        
         observation = self._get_obs()
         info = self._get_info()
 
+        if terminated:
+            if self.fsm.has_gripper_opened == True: 
+                self._wait_for_block_to_land()
+                reward = self._compute_reward()
+            else:
+                # The robot does not release the block until the episode ends 
+                self.fsm.state = 'post_flip_block'
+                reward = -300
+
+        else:
+            reward = 0
+        
         if self.render_mode is not None:
             self.render()
         
@@ -181,6 +169,32 @@ class URFlipBlockEnv(gym.Env):
             self.out.release()
 
         return observation, reward, terminated, False, info
+
+    def _wait_for_block_to_land(self):
+        while self.has_block_landed == False:
+            self.fsm.do_move_back(self.model, self.data)
+            mujoco.mj_step(self.model, self.data)
+            if self.render_mode is not None:
+                self.render()
+            
+            # Conditional to check  the block state after being released
+            if self.fsm.has_block_released:
+                block_position, block_orientation = get_block_pose(self.model, self.data, 'block_0')
+                self.block_orientation_hist.append(block_orientation)
+            
+                # To check whether the block hit the robot or not
+                if len(self.block_height_hist) < 4:
+                    self.block_height_hist.append(block_position[2])
+                if len(self.block_height_hist) == 3:
+                    if is_block_declining(self.block_height_hist):
+                        new_contacts = detect_block_contact(self.data)
+                        if new_contacts:
+                            self.block_contact_hist = np.vstack([self.block_contact_hist, new_contacts])
+
+                # To check whether the block has landed or not                                        
+                block_trans_velocity, block_ang_velocity = get_block_velocity(self.data)
+                if block_trans_velocity < 0.01 and block_ang_velocity < 0.001:
+                    self.has_block_landed = True
 
     def render(self):
         if self.render_mode == 'livecam':
@@ -230,18 +244,21 @@ class URFlipBlockEnv(gym.Env):
         np.random.seed(seed)
 
 def manual_test():
-    def get_action(observation):
+    def get_action(env, observation):
         release_elbow_angle = 0.9
         elbow_angle = observation[0] 
 
-        if elbow_angle < release_elbow_angle:
-            if episode % 2 != 0:
-                action = [0, 0, 0]
- 
+        if env.fsm.has_block_released == False:
+            if elbow_angle < release_elbow_angle:
+                if episode % 2 != 0:
+                    action = [0, 0, 0] # Tes kalo baloknya ga dilepas gimana (khusus episode genap)
+    
+                else:
+                    action = [20, 20, 1]
             else:
-                action = [0, 0, 1]
+                action = [20, 20, 0] # Mengayunkan joints
         else:
-            action = [20, 20, 0]
+            action = [0, 0, 1]
         return action
 
     num_episodes = 1
@@ -258,28 +275,22 @@ def manual_test():
         print("Id of floor: ", env.data.geom('floor').id)
 
         total_reward = 0
-        done = False
-        action_call = 0
+        print_iteration = 0
+        terminated = False
 
-        while not done:
-            #print(env.force_reset, env.state)
-            
-            action = get_action(observation)
-            action_call += 1
+        while not terminated:
+            action = get_action(env, observation)
 
             observation, reward, terminated, truncated, info = env.step(action)
 
-            #if env.state == 'flip_block':            
-            #print("Observation:", observation)
-            #print("Reward:", reward)
-            #print("Info:", info)
+            print("Is terminated: ", terminated, "Observation: ", observation, "Reward: ", reward, "Action: ", action)
+
+            if env.fsm.has_block_released == True and print_iteration < 5:
+                print("Is terminated: ", terminated, "Observation: ", observation, "Reward: ", reward, "Action: ", action)
+                print_iteration += 1
 
             total_reward += reward
 
-            if terminated or truncated:
-                print(f"Episode {episode + 1} ended with total reward: {total_reward}")
-                episode_rewards.append(total_reward)
-                break
         
         #for contact in env.block_contact_hist:
         #    print("Contact between:", contact[0], contact[1])
@@ -289,14 +300,15 @@ def manual_test():
         
     env.close()
 
+    print("Total rewards:", total_reward)   
     # Print the rewards for all episodes
-    print("Action calls:", action_call)
-    print("Episode rewards:", episode_rewards)
-    print("Average reward over episodes:", np.mean(episode_rewards))
+    #print("Action calls:", action_call)
+    #print("Episode rewards:", episode_rewards)
+    #print("Average reward over episodes:", np.mean(episode_rewards))
 
 
-#if __name__ == "__main__":
+if __name__ == "__main__":
     #env = URFlipBlockEnv()
     #check_env(env, skip_render_check=False)
     #print(env.action_space.sample())
-    #manual_test()
+    manual_test()

@@ -1,7 +1,7 @@
 import numpy as np
-from research_main.envs.utils import *
+#from research_main.envs.utils import *
 
-#from utils import *
+from utils import *
 
 class FiniteStateMachine:
     def __init__(self, model):
@@ -129,22 +129,31 @@ class FiniteStateMachine:
                 set_joint_states(data, moving_actuators, stop_velocities)
                 gripper_open(data)
                 self.has_gripper_opened = True
-                self.iteration += 1
-                self.print_iteration += 1
+                #self.iteration += 1
+                #self.print_iteration += 1
 
-                if self.iteration > 50:
+                #if self.iteration > 50:
                     #print("Block released: ", get_block_pose(model, data, 'block_0')[0])           
-                    self.has_block_released = True
-                    self.move_to_next_state = True
-                    self.iteration = 0
-                    self.state = 'move_back'
+                    #self.has_block_released = True
+                    #self.move_to_next_state = True
+                    #self.iteration = 0
+                    #self.state = 'move_back'
 
-        elif self.state == 'move_back':
+    def do_move_back(self, model, data):
+        self.iteration += 1
+        if self.iteration > 50 and self.state == 'flip_block':
+            print("Block released: ", get_block_pose(model, data, 'block_0')[0])           
+            self.has_block_released = True
+            self.move_to_next_state = True
+            self.iteration = 0
+            self.state = 'move_back'
+
+        if self.state == 'move_back':
             self.move_to_next_state = False
 
             moving_velocity_actuators = [self.elbow_id, self.wrist_1_id]
             moving_position_actuators = [self.shoulder_pan_id]
- 
+
             target_velocity = [np.pi, np.pi]
             target_position = [0]
             
