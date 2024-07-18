@@ -60,7 +60,7 @@ def create_ur_model(marker_position=None, block_positions_orientations=None):
 
     xml_string = f'''
     <mujoco model="ur10e scene">
-        <include file="universal_robots_ur10e_2f85/ur10e_2f85.xml"/>
+        <include file="research_main/envs/universal_robots_ur10e_2f85/ur10e_2f85.xml"/>
 
         <visual>
             <global offheight="2160" offwidth="3840"/>

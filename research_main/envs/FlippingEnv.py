@@ -11,13 +11,13 @@ from gymnasium import spaces
 from gymnasium.utils.env_checker import check_env
 from gymnasium.spaces.utils import flatten_space, flatten, unflatten
 
-#from research_main.envs.utils import *
-#from research_main.envs.scene_builder import *
-#from research_main.envs.finite_state_machine import *
+from research_main.envs.utils import *
+from research_main.envs.scene_builder import *
+from research_main.envs.finite_state_machine import *
 
-from utils import *
-from scene_builder import *
-from finite_state_machine import *
+#from utils import *
+#from scene_builder import *
+#from finite_state_machine import *
 
 
 class URFlipBlockEnv(gym.Env):

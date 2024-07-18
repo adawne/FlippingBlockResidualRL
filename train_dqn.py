@@ -41,6 +41,8 @@ def get_args():
     args = parser.parse_known_args()[0]
     return args
 
+
+
 def train_dqn(args=get_args()):
     # Create the wrapped environment
     env = gym.make("research_main/FlipBlock-v0")
@@ -89,6 +91,21 @@ def train_dqn(args=get_args()):
         buf = VectorReplayBuffer(args.buffer_size, buffer_num=len(train_envs), ignore_obs_next=True)
 
 
+    train_collector = ts.data.Collector(policy, train_envs, buf, exploration_noise=True)
+    test_collector = ts.data.Collector(policy, test_envs, exploration_noise=True)
+
+    logger = WandbLogger(
+        train_interval=1,
+        update_interval=1,
+        save_interval=200,
+        project=args.task,
+        config=args,
+    )
+
+    log_path = join(args.logdir, args.task)
+    writer = SummaryWriter(log_path)
+    logger.load(writer)
+
     def train_fn(epoch, env_step):
         if env_step <= 10000:
             policy.set_eps(args.eps_train)
@@ -110,20 +127,13 @@ def train_dqn(args=get_args()):
     def test_fn(epoch, env_step):
         policy.set_eps(args.eps_test)
 
-    train_collector = ts.data.Collector(policy, train_envs, buf, exploration_noise=True)
-    test_collector = ts.data.Collector(policy, test_envs, exploration_noise=True)
+    def save_best_fn(policy):
+        save_path = join(args.logdir, args.task, 'best_policy.pth')
+        torch.save(policy.state_dict(), save_path)
 
-    logger = WandbLogger(
-        train_interval=100,
-        update_interval=10,
-        save_interval=200,
-        project=args.task,
-        config=args,
-    )
-
-    log_path = join(args.logdir, args.task)
-    writer = SummaryWriter(log_path)
-    logger.load(writer)
+    def save_checkpoint_fn(epoch, env_step, gradient_step):
+        save_path = join(args.logdir, args.task, f'checkpoint_epoch{epoch}_policy.pth')
+        torch.save(policy.state_dict(), save_path)
 
 
     result = ts.trainer.OffpolicyTrainer(
@@ -133,7 +143,9 @@ def train_dqn(args=get_args()):
         max_epoch=args.epoch, step_per_epoch=args.step_per_epoch, step_per_collect=args.step_per_collect,
         update_per_step=args.update_per_step, episode_per_test=100, batch_size=args.batch_size,
         train_fn=train_fn,
-        test_fn=0,
+        test_fn=test_fn,
+        save_fn=save_best_fn,
+        save_checkpoint_fn=save_checkpoint_fn,
         verbose=True,
         logger=logger
     ).run()
