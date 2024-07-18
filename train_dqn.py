@@ -60,6 +60,8 @@ def train_dqn(args=get_args()):
                 nn.Linear(np.prod(state_shape), 128), nn.ReLU(inplace=True),
                 nn.Linear(128, 128), nn.ReLU(inplace=True),
                 nn.Linear(128, 128), nn.ReLU(inplace=True),
+                nn.Linear(128, 128), nn.ReLU(inplace=True),
+                nn.Linear(128, 128), nn.ReLU(inplace=True),
                 nn.Linear(128, np.prod(action_shape)),
             )
 
@@ -97,6 +99,8 @@ def train_dqn(args=get_args()):
     logger = WandbLogger(
         train_interval=1,
         update_interval=1,
+        info_interval=1,
+        test_interval=1,
         save_interval=200,
         project=args.task,
         config=args,
