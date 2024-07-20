@@ -31,7 +31,7 @@ def get_args():
     parser.add_argument('--step-per-epoch', type=int, default=1000)
     parser.add_argument('--step-per-collect', type=int, default=1000)
     parser.add_argument('--update-per-step', type=float, default=0.1)
-    parser.add_argument('--prioritized-replay', default=True)
+    parser.add_argument('--prioritized-replay', default=False)
     parser.add_argument('--alpha', type=float, default=0.6)
     parser.add_argument('--beta', type=float, default=0.4)
     parser.add_argument('--beta-final', type=float, default=1.0)
@@ -46,11 +46,10 @@ def get_args():
 def train_dqn(args=get_args()):
     # Create the wrapped environment
     env = gym.make("research_main/FlipBlock-v0")
-    wrapped_env = MultiDiscreteToDiscrete(env)
 
     # Make the training and testing environments
-    train_envs = DummyVectorEnv([lambda: MultiDiscreteToDiscrete(gym.make("research_main/FlipBlock-v0")) for _ in range(args.train_num)])
-    test_envs = DummyVectorEnv([lambda: MultiDiscreteToDiscrete(gym.make("research_main/FlipBlock-v0")) for _ in range(args.test_num)])
+    train_envs = DummyVectorEnv([lambda: gym.make("research_main/FlipBlock-v0") for _ in range(args.train_num)])
+    test_envs = DummyVectorEnv([lambda: gym.make("research_main/FlipBlock-v0") for _ in range(args.test_num)])
 
     # Build the network
     class Net(nn.Module):
@@ -58,8 +57,6 @@ def train_dqn(args=get_args()):
             super().__init__()
             self.model = nn.Sequential(
                 nn.Linear(np.prod(state_shape), 128), nn.ReLU(inplace=True),
-                nn.Linear(128, 128), nn.ReLU(inplace=True),
-                nn.Linear(128, 128), nn.ReLU(inplace=True),
                 nn.Linear(128, 128), nn.ReLU(inplace=True),
                 nn.Linear(128, 128), nn.ReLU(inplace=True),
                 nn.Linear(128, np.prod(action_shape)),
@@ -72,8 +69,8 @@ def train_dqn(args=get_args()):
             logits = self.model(obs.view(batch, -1))
             return logits, state
 
-    state_shape = wrapped_env.observation_space.shape or wrapped_env.observation_space.n
-    action_shape = wrapped_env.action_space.shape or wrapped_env.action_space.n
+    state_shape = env.observation_space.shape or env.observation_space.n
+    action_shape = env.action_space.shape or env.action_space.n
     print("Action shape:", action_shape)
     net = Net(state_shape, action_shape)
     optim = torch.optim.Adam(net.parameters(), lr=args.lr)
@@ -81,7 +78,7 @@ def train_dqn(args=get_args()):
     policy = ts.policy.DQNPolicy(
         model=net,
         optim=optim,
-        action_space=wrapped_env.action_space,
+        action_space= env.action_space,
         discount_factor=0.9,
         estimation_step=args.n_step,
         target_update_freq=args.target_update_freq,
@@ -95,6 +92,8 @@ def train_dqn(args=get_args()):
 
     train_collector = ts.data.Collector(policy, train_envs, buf, exploration_noise=True)
     test_collector = ts.data.Collector(policy, test_envs, exploration_noise=True)
+
+    train_collector.collect(n_step=args.batch_size * args.train_num)
 
     logger = WandbLogger(
         train_interval=1,
@@ -159,7 +158,7 @@ def train_dqn(args=get_args()):
     
     if __name__ == "__main__":
         pprint.pprint(result)
-        env = DummyVectorEnv([lambda: MultiDiscreteToDiscrete(gym.make("research_main/FlipBlock-v0"))])
+        env = DummyVectorEnv([lambda: gym.make("research_main/FlipBlock-v0")])
         policy.load_state_dict(torch.load('Flipping_DQN.pth'))
         policy.eval()
         policy.set_eps(args.eps_test)

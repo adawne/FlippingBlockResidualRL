@@ -11,13 +11,13 @@ from gymnasium import spaces
 from gymnasium.utils.env_checker import check_env
 from gymnasium.spaces.utils import flatten_space, flatten, unflatten
 
-from research_main.envs.utils import *
-from research_main.envs.scene_builder import *
-from research_main.envs.finite_state_machine import *
+#from research_main.envs.utils import *
+#from research_main.envs.scene_builder import *
+#from research_main.envs.finite_state_machine import *
 
-#from utils import *
-#from scene_builder import *
-#from finite_state_machine import *
+from utils import *
+from scene_builder import *
+from finite_state_machine import *
 
 
 class URFlipBlockEnv(gym.Env):
@@ -60,19 +60,10 @@ class URFlipBlockEnv(gym.Env):
             self.model.vis.scale.forcewidth = 0.05
             self.model.vis.map.force = 0.3
 
-        # Observation space: joint positions (2), joint velocities (2), block orientation (3)
-        #Action space: elbow velocity, wrist 1 velocity, release
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(7,), dtype=np.float64)
-        self.action_space = spaces.MultiDiscrete([21, 21, 2])
-        #self.action_space = spaces.Dict({
-        #    "elbow_velocity": spaces.Box(low=-np.pi, high=0, shape=(1,), dtype=np.float64),
-        #    "wrist_1_velocity": spaces.Box(low=-np.pi, high=0, shape=(1,), dtype=np.float64),
-        #    "release": spaces.MultiBinary(1)
-        #})
-        #self.action_space = flatten_space(original_action_space)
-        #print("Action space:", self.action_space)
-        
-        #self.original_action_space = original_action_space
+        # Observation space: elbow angle (1)
+        #Action space: Release or not
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float64)
+        self.action_space = spaces.Discrete(2)
         self.has_block_landed = False
 
     def reset(self, seed=None, options=None):
@@ -142,7 +133,7 @@ class URFlipBlockEnv(gym.Env):
     def step(self, action):
         #print("Action: ", action)
         #original_action = unflatten(self.original_action_space, action)
-        terminated = True if(action[2] == 1 or self.data.time > 8) else False
+        terminated = True if(action == 1 or self.data.time > 8) else False
 
         self.fsm.do_flip(self.model, self.data, action)
         mujoco.mj_step(self.model, self.data)
@@ -219,15 +210,11 @@ class URFlipBlockEnv(gym.Env):
     def _get_obs(self): 
         # Observation space: joint positions (2), joint velocities (2), block orientation (3)
         self.elbow_id = self.model.joint('elbow_joint').id
-        self.wrist_1_id = self.model.joint('wrist_1_joint').id 
         
-        self.active_joint_ids = [self.elbow_id, self.wrist_1_id]
+        self.active_joint_ids = [self.elbow_id]
         self.active_joint_angles = get_specific_joint_angles(self.data, self.active_joint_ids)
-        self.active_joint_velocities = get_specific_joint_velocities(self.data, self.active_joint_ids)
 
-        _, self.block_orientation = get_block_pose(self.model, self.data, 'block_0')
-       
-        obs = np.concatenate([self.active_joint_angles, self.active_joint_velocities, self.block_orientation])
+        obs = np.array([self.active_joint_angles])
         
         return obs
 
@@ -235,8 +222,6 @@ class URFlipBlockEnv(gym.Env):
         return {
             "state": self.fsm.state,
             "joint_angles": self.active_joint_angles,
-            "joint_velocities": self.active_joint_velocities,
-            "block_orientation": self.block_orientation,
             "block_landed": self.has_block_landed,
         }
 
@@ -246,25 +231,25 @@ class URFlipBlockEnv(gym.Env):
 def manual_test():
     def get_action(env, observation):
         release_elbow_angle = 0.9
-        elbow_angle = observation[0] 
+        elbow_angle = observation 
 
         if env.fsm.has_block_released == False:
             if elbow_angle < release_elbow_angle:
                 if episode % 2 != 0:
-                    action = [0, 0, 0] # Tes kalo baloknya ga dilepas gimana (khusus episode genap)
+                    action = 0 # Tes kalo baloknya ga dilepas gimana (khusus episode genap)
     
                 else:
-                    action = [20, 20, 1]
+                    action = 1
             else:
-                action = [20, 20, 0] # Mengayunkan joints
+                action = 0 # Mengayunkan joints
         else:
-            action = [0, 0, 1]
+            action = 1
         return action
 
     num_episodes = 1
     episode_rewards = []
 
-    env = URFlipBlockEnv(render_mode='livecam') 
+    env = URFlipBlockEnv(render_mode='video') 
 
     for episode in range(num_episodes):
         observation, info = env.reset()

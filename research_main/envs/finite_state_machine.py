@@ -1,7 +1,7 @@
 import numpy as np
-from research_main.envs.utils import *
+#from research_main.envs.utils import *
 
-#from utils import *
+from utils import *
 
 class FiniteStateMachine:
     def __init__(self, model):
@@ -100,12 +100,10 @@ class FiniteStateMachine:
         return self.state
 
     def do_flip(self, model, data, action):
-        elbow_discrete_action = action[0]
-        wrist_1_discrete_action = action[1]
-        release = action[2]
+        release = action
 
-        elbow_velocity = map_to_velocity(elbow_discrete_action)
-        wrist_1_velocity = map_to_velocity(wrist_1_discrete_action)
+        elbow_velocity = -np.pi
+        wrist_1_velocity = -np.pi
 
         if self.state == 'flip_block':
             #if self.print_iteration == 0:
