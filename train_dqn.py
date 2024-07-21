@@ -20,6 +20,8 @@ def get_args():
     parser.add_argument('--logdir', type=str, default='log')
     parser.add_argument('--train-num', type=int, default=10)
     parser.add_argument('--test-num', type=int, default=100)
+    parser.add_argument('--hidden-layers', type=int, default=2, help='Number of hidden layers in the network')
+    parser.add_argument('--units-per-layer', type=int, default=256, help='Number of units per hidden layer')
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--n_step', type=int, default=1)
     parser.add_argument('--target-update-freq', type=int, default=100)
@@ -27,6 +29,7 @@ def get_args():
     parser.add_argument('--batch-size', type=int, default=64)
     parser.add_argument('--eps-train', type=float, default=1.0)
     parser.add_argument('--eps-test', type=float, default=0)
+    parser.add_argument('--eps-decay-steps', type=int, default=40000, help='Number of steps over which epsilon decays')
     parser.add_argument('--epoch', type=int, default=10000)
     parser.add_argument('--step-per-epoch', type=int, default=1000)
     parser.add_argument('--step-per-collect', type=int, default=1000)
@@ -38,6 +41,8 @@ def get_args():
     parser.add_argument(
         '--device', type=str, default='cuda:1' if torch.cuda.is_available() else 'cpu'
     )
+    parser.add_argument('--resume-path', type=str, default=None)
+    parser.add_argument('--resume-id', type=str, default=None)
     args = parser.parse_known_args()[0]
     return args
 
@@ -53,14 +58,18 @@ def train_dqn(args=get_args()):
 
     # Build the network
     class Net(nn.Module):
-        def __init__(self, state_shape, action_shape):
+        def __init__(self, state_shape, action_shape, hidden_layers, units_per_layer):
             super().__init__()
-            self.model = nn.Sequential(
-                nn.Linear(np.prod(state_shape), 128), nn.ReLU(inplace=True),
-                nn.Linear(128, 128), nn.ReLU(inplace=True),
-                nn.Linear(128, 128), nn.ReLU(inplace=True),
-                nn.Linear(128, np.prod(action_shape)),
-            )
+            layers = []
+            input_size = np.prod(state_shape)
+            
+            for _ in range(hidden_layers):
+                layers.append(nn.Linear(input_size, units_per_layer))
+                layers.append(nn.ReLU(inplace=True))
+                input_size = units_per_layer
+            
+            layers.append(nn.Linear(input_size, np.prod(action_shape)))
+            self.model = nn.Sequential(*layers)
 
         def forward(self, obs, state=None, info={}):
             if not isinstance(obs, torch.Tensor):
@@ -100,7 +109,6 @@ def train_dqn(args=get_args()):
         update_interval=1,
         info_interval=1,
         test_interval=1,
-        save_interval=200,
         project=args.task,
         config=args,
     )
@@ -112,11 +120,12 @@ def train_dqn(args=get_args()):
     def train_fn(epoch, env_step):
         if env_step <= 10000:
             policy.set_eps(args.eps_train)
-        elif env_step <= 50000:
-            eps = args.eps_train - (env_step - 10000) / 40000 * (0.9 * args.eps_train)
-            policy.set_eps(eps)
+        elif env_step <= 10000 + args.eps_decay_steps:
+            eps = args.eps_train - (env_step - 10000) / args.eps_decay_steps * (0.9 * args.eps_train)
+            policy.set_eps(max(eps, 0.1 * args.eps_train))  # Ensure epsilon doesn't go below 10% of initial epsilon
         else:
             policy.set_eps(0.1 * args.eps_train)
+
 
         if args.prioritized_replay:
             if env_step <= 10000:
