@@ -11,13 +11,13 @@ from gymnasium import spaces
 from gymnasium.utils.env_checker import check_env
 from gymnasium.spaces.utils import flatten_space, flatten, unflatten
 
-#from research_main.envs.utils import *
-#from research_main.envs.scene_builder import *
-#from research_main.envs.finite_state_machine import *
+from research_main.envs.utils import *
+from research_main.envs.scene_builder import *
+from research_main.envs.finite_state_machine import *
 
-from utils import *
-from scene_builder import *
-from finite_state_machine import *
+#from utils import *
+#from scene_builder import *
+#from finite_state_machine import *
 
 
 class URFlipBlockEnv(gym.Env):
@@ -249,7 +249,7 @@ def manual_test():
     num_episodes = 1
     episode_rewards = []
 
-    env = URFlipBlockEnv(render_mode='video') 
+    env = URFlipBlockEnv(render_mode='livecam') 
 
     for episode in range(num_episodes):
         observation, info = env.reset()
@@ -261,12 +261,14 @@ def manual_test():
 
         total_reward = 0
         print_iteration = 0
+        action_call = 0
         terminated = False
 
         while not terminated:
             action = get_action(env, observation)
 
             observation, reward, terminated, truncated, info = env.step(action)
+            action_call += 1
 
             print("Is terminated: ", terminated, "Observation: ", observation, "Reward: ", reward, "Action: ", action)
 
@@ -279,6 +281,7 @@ def manual_test():
         
         #for contact in env.block_contact_hist:
         #    print("Contact between:", contact[0], contact[1])
+        print("Total actions: ", action_call)
         print("Block pose: ", get_block_pose(env.model, env.data, 'block_0'))
         print("Has gripper opened: ", env.fsm.has_gripper_opened)
         print("Resetting environment for next episode.")
