@@ -9,19 +9,19 @@ import torch, numpy as np
 from os.path import join
 from torch import nn
 from tianshou.data import VectorReplayBuffer, PrioritizedVectorReplayBuffer
-from tianshou.env import DummyVectorEnv
+from tianshou.env import DummyVectorEnv, SubprocVectorEnv
 from tianshou.env.gym_wrappers import MultiDiscreteToDiscrete
 from tianshou.utils import WandbLogger
 from torch.utils.tensorboard import SummaryWriter
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--task', type=str, default='FlippingEnv-Beta')
+    parser.add_argument('--task', type=str, default='FlippingEnv-v0')
     parser.add_argument('--logdir', type=str, default='log')
     parser.add_argument('--train-num', type=int, default=10)
     parser.add_argument('--test-num', type=int, default=100)
     parser.add_argument('--hidden-layers', type=int, default=2, help='Number of hidden layers in the network')
-    parser.add_argument('--units-per-layer', type=int, default=256, help='Number of units per hidden layer')
+    parser.add_argument('--units-per-layer', type=int, default=128, help='Number of units per hidden layer')
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--n_step', type=int, default=1)
     parser.add_argument('--target-update-freq', type=int, default=100)
@@ -30,7 +30,7 @@ def get_args():
     parser.add_argument('--eps-train', type=float, default=1.0)
     parser.add_argument('--eps-test', type=float, default=0)
     parser.add_argument('--eps-decay-steps', type=int, default=40000, help='Number of steps over which epsilon decays')
-    parser.add_argument('--epoch', type=int, default=10000)
+    parser.add_argument('--epoch', type=int, default=1000)
     parser.add_argument('--step-per-epoch', type=int, default=1000)
     parser.add_argument('--step-per-collect', type=int, default=1000)
     parser.add_argument('--update-per-step', type=float, default=0.1)
@@ -44,6 +44,8 @@ def get_args():
     parser.add_argument('--resume-path', type=str, default=None)
     parser.add_argument('--resume-id', type=str, default=None)
     args = parser.parse_known_args()[0]
+
+    print("Arguments:", vars(args))
     return args
 
 
@@ -53,8 +55,8 @@ def train_dqn(args=get_args()):
     env = gym.make("research_main/FlipBlock-v0")
 
     # Make the training and testing environments
-    train_envs = DummyVectorEnv([lambda: gym.make("research_main/FlipBlock-v0") for _ in range(args.train_num)])
-    test_envs = DummyVectorEnv([lambda: gym.make("research_main/FlipBlock-v0") for _ in range(args.test_num)])
+    train_envs = SubprocVectorEnv([lambda: gym.make("research_main/FlipBlock-v0") for _ in range(args.train_num)])
+    test_envs = SubprocVectorEnv([lambda: gym.make("research_main/FlipBlock-v0") for _ in range(args.test_num)])
 
     # Build the network
     class Net(nn.Module):
@@ -80,8 +82,7 @@ def train_dqn(args=get_args()):
 
     state_shape = env.observation_space.shape or env.observation_space.n
     action_shape = env.action_space.shape or env.action_space.n
-    print("Action shape:", action_shape)
-    net = Net(state_shape, action_shape)
+    net = Net(state_shape, action_shape, args.hidden_layers, args.units_per_layer)
     optim = torch.optim.Adam(net.parameters(), lr=args.lr)
 
     policy = ts.policy.DQNPolicy(
@@ -146,6 +147,8 @@ def train_dqn(args=get_args()):
     def save_checkpoint_fn(epoch, env_step, gradient_step):
         save_path = join(args.logdir, args.task, f'checkpoint_epoch{epoch}_policy.pth')
         torch.save(policy.state_dict(), save_path)
+
+        return save_path
 
 
     result = ts.trainer.OffpolicyTrainer(
