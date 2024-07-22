@@ -186,7 +186,7 @@ def generate_trajectory(start, end):
     return points
 
 def has_flipped(data):
-    if data.geom("orange_subbox").xpos[2] < data.geom("blue_subbox").xpos[2]:
+    if (data.geom("orange_subbox").xpos[2] + 1e-2) < data.geom("blue_subbox").xpos[2]:
         return True
     else:
         return False

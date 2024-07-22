@@ -11,13 +11,13 @@ from gymnasium import spaces
 from gymnasium.utils.env_checker import check_env
 from gymnasium.spaces.utils import flatten_space, flatten, unflatten
 
-from research_main.envs.utils import *
-from research_main.envs.scene_builder import *
-from research_main.envs.finite_state_machine import *
+#from research_main.envs.utils import *
+#from research_main.envs.scene_builder import *
+#from research_main.envs.finite_state_machine import *
 
-#from utils import *
-#from scene_builder import *
-#from finite_state_machine import *
+from utils import *
+from scene_builder import *
+from finite_state_machine import *
 
 
 class URFlipBlockEnv(gym.Env):
@@ -116,27 +116,28 @@ class URFlipBlockEnv(gym.Env):
 
         if reward == 0:
             if has_rotated(self.block_orientation_hist) and has_flipped(self.data):
-                #print("Block successfully flipped.")
-                reward += 100
-            elif has_flipped(self.data):
+                print("Block successfully flipped.")
+                reward += 300
+            #elif has_flipped(self.data):
                 #print("Block flipped but not rotated.")
-                reward += -50
-            elif has_rotated(self.block_orientation_hist):
+            #    reward += -50
+            #elif has_rotated(self.block_orientation_hist):
                 #print("Block rotated but not flipped.")
-                reward += 30
+            #    reward += 30
             else:
                 #print("Block not flipped or rotated.")
-                reward += -100
+                #reward += -100
+                reward = 0
 
         return reward
 
     def step(self, action):
         #print("Action: ", action)
         #original_action = unflatten(self.original_action_space, action)
-        terminated = True if(action == 1 or self.data.time > 8) else False
+        terminated = True if(action == 1) else False
 
         self.fsm.do_flip(self.model, self.data, action)
-        mujoco.mj_step(self.model, self.data)
+        mujoco.mj_step(self.model, self.data, nstep=5)
 
         observation = self._get_obs()
         info = self._get_info()
@@ -151,7 +152,10 @@ class URFlipBlockEnv(gym.Env):
                 reward = -300
 
         else:
-            reward = 0
+            if observation[0] < 1.3 and observation[0] > 0.8:
+                reward = 10
+            else:
+                reward = 0
         
         if self.render_mode is not None:
             self.render()
