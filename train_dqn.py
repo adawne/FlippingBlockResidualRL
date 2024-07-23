@@ -106,10 +106,7 @@ def train_dqn(args=get_args()):
     train_collector.collect(n_step=args.batch_size * args.train_num)
 
     logger = WandbLogger(
-        train_interval=1,
-        update_interval=1,
-        info_interval=1,
-        test_interval=1,
+        save_interval=10,
         project=args.task,
         config=args,
     )
