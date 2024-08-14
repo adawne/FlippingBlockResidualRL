@@ -15,7 +15,9 @@ def get_args():
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--n_step', type=int, default=1)
     parser.add_argument('--target-update-freq', type=int, default=100)
-    parser.add_argument('--eps-test', type=float, default=0)
+    parser.add_argument('--eps-test', type=float, default=1)
+    parser.add_argument('--hidden-layers', type=int, default=2, help='Number of hidden layers in the network')
+    parser.add_argument('--units-per-layer', type=int, default=128, help='Number of units per hidden layer')
     args = parser.parse_known_args()[0]
     return args
 
@@ -34,14 +36,18 @@ def load_policy(args, render_mode=None):
 
     # Build the network
     class Net(nn.Module):
-        def __init__(self, state_shape, action_shape):
+        def __init__(self, state_shape, action_shape, hidden_layers, units_per_layer):
             super().__init__()
-            self.model = nn.Sequential(
-                nn.Linear(np.prod(state_shape), 128), nn.ReLU(inplace=True),
-                nn.Linear(128, 128), nn.ReLU(inplace=True),
-                nn.Linear(128, 128), nn.ReLU(inplace=True),
-                nn.Linear(128, np.prod(action_shape)),
-            )
+            layers = []
+            input_size = np.prod(state_shape)
+            
+            for _ in range(hidden_layers):
+                layers.append(nn.Linear(input_size, units_per_layer))
+                layers.append(nn.ReLU(inplace=True))
+                input_size = units_per_layer
+            
+            layers.append(nn.Linear(input_size, np.prod(action_shape)))
+            self.model = nn.Sequential(*layers)
 
         def forward(self, obs, state=None, info={}):
             if not isinstance(obs, torch.Tensor):
@@ -53,7 +59,7 @@ def load_policy(args, render_mode=None):
     state_shape = env.observation_space.shape or env.observation_space.n
     action_shape = env.action_space.shape or env.action_space.n
     print("Action shape:", action_shape)
-    net = Net(state_shape, action_shape)
+    net = Net(state_shape, action_shape, args.hidden_layers, args.units_per_layer)
     optim = torch.optim.Adam(net.parameters(), lr=args.lr)
 
 
@@ -66,7 +72,7 @@ def load_policy(args, render_mode=None):
         target_update_freq=args.target_update_freq,
     )
 
-    policy.load_state_dict(torch.load('checkpoint_epoch199_policy.pth'))
+    policy.load_state_dict(torch.load('policy train results/single_state-act/13-leafyhill/checkpoint_epoch489_policy.pth'))
     policy.eval()
     policy.set_eps(args.eps_test)
 
@@ -116,7 +122,7 @@ def run_base_eval(env, policy, verbose=False):
     return length, reward
 
 def simulate_flipping(args=get_args()):
-    env, policy = load_policy(args, render_mode='livecam')
+    env, policy = load_policy(args, render_mode='video')
     length, reward = run_base_eval(env, policy)
     print(f"Length: {length}, Reward: {reward}")
 
