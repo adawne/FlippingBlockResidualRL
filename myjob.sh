@@ -20,11 +20,12 @@ conda activate RL_env
 
 #################### Training ####################
 python train_dqn.py --units-per-layer 128 \
-                -- hidden-layers 2 \
+                --hidden-layers 2 \
                 --target-update-freq 10 \
                 --buffer-size 20000 \
                 --batch-size 128 \
                 --lr 1e-3 \
                 --eps-decay-steps 70000 \
-                --step-per-collect 10 \
+                --step-per-collect 5 \
+                --prioritized-replay True\
 
