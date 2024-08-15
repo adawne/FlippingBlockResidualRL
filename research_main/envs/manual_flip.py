@@ -138,4 +138,4 @@ def main(render_mode=None, contact_vis=None):
 
 
 if __name__ == "__main__":
-    main(render_mode='video')
+    main(render_mode='livecam')

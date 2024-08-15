@@ -1,41 +1,80 @@
 import numpy as np
+import mujoco
+
 from scipy.optimize import minimize
+from scene_builder import *
 
-# Parameters (example values)
-I = 1.0  # Moment of inertia
-m = 1.0  # Mass of the block
-theta_0 = 0.0
-theta_final = np.pi / 2  # 90 degrees
-t = 1.0  # Time duration for the flip
+block_positions_orientations = [([0.5, 0.5, 0.1], [np.pi/2, 0, 0])]
+world_xml_model = create_ur_model(marker_position=None, block_positions_orientations=block_positions_orientations)
+model = mujoco.MjModel.from_xml_string(world_xml_model)
 
-# Define the objective function
+#m = model.body('block_0').mass
+#w = model.geom('blue_subbox').size[0]
+#d = model.geom('blue_subbox').size[1]
+#h = model.geom('blue_subbox').size[2]
+#I = (m/12) * (w**2 + d**2)  # Moment of inertia
+#print("mass: ", m, "width: ", w, "depth: ", d, "height: ", h, "manual calculation of Inertria: ", I)
+
+#I = model.body('block_0').inertia[2]
+
+#theta_0 = 0.0
+#theta_final = 0 
+
+
+# Constants
+g = 9.81  # gravitational acceleration (m/s^2)
+
+# Objective function
 def objective(x):
-    omega_final = x[0]
-    Vx_final = x[1]
-    return np.sqrt(I * omega_final**2 + m * Vx_final**2)
+    T, v_x0, theta_0 = x  # Now we also optimize theta_0
+    omega = (2 * np.pi - theta_0) / T
+    v_f = np.sqrt(v_x0**2 + (g * T / 2)**2)
+    
+    # Objective: minimize angular velocity + lambda * final linear velocity
+    lambda_ = 0.1  # Weighting factor, adjust as needed
+    return np.abs(omega) + lambda_ * v_f
 
-# Define the constraint functions
-def constraint_omega_initial(x):
-    omega_final = x[0]
-    return omega_final - (theta_final - theta_0) / t
+# Constraints
+def constraint_theta_final(x):
+    T, v_x0, theta_0 = x
+    omega = (2 * np.pi - theta_0) / T
+    theta_final = theta_0 + omega * T
+    return theta_final - 1e-5
+    
 
-def constraint_velocity(x):
-    Vx_final = x[1]
-    return Vx_final
+# Bounds for T, v_x0, and theta_0
+bnds = [(0.1, None), (0.1, None), (0, np.pi)]  # T > 0, v_x0 > 0, 0 <= theta_0 <= 2*pi
 
-# Initial guess
-x0 = [0.0, 0.1]  # Initial guess for [omega_final, Vx_final]
+# Constraints dictionary
+constr = {'type': 'eq', 'fun': lambda x: np.round(constraint_theta_final(x), decimals=5)}  # Added rounding for tolerance
 
-# Define the constraints
-constraints = [
-    {'type': 'eq', 'fun': constraint_omega_initial},
-    {'type': 'ineq', 'fun': constraint_velocity}  # Vx_final > 0
+x0_list = [
+    [5, 5, 3 * np.pi / 2],
+    [10, 1, np.pi],
+    [1, 10, np.pi / 2],
+    [7, 7, np.pi / 4]
 ]
 
-# Perform the optimization
-result = minimize(objective, x0, constraints=constraints, method='SLSQP')
+# Loop through each initial guess and perform optimization
+for x0 in x0_list:
+    result = minimize(objective, x0, method='trust-constr', bounds=bnds, constraints=[constr])
+    
+    # Extract optimized variables
+    T_opt, v_x0_opt, theta_0_opt = result.x
 
-# Output the results
-print("Optimal omega_final:", result.x[0])
-print("Optimal Vx_final:", result.x[1])
-print("Objective function value:", result.fun)
+    # Inspect the gradient (Jacobian)
+    gradient = result.jac
+
+    # Calculate omega and vz
+    omega = (2*np.pi - theta_0_opt)/T_opt
+    v_z = g * T_opt/2
+    
+    # Output results
+    print("===========================")
+    print(f"Initial guess: {x0}")
+    print(f"Optimized T: {T_opt}, v_x0: {v_x0_opt}, theta_0: {theta_0_opt}")
+    print(f"Initial angular velocity: {omega}, initial vertical velocity: {v_z}")
+    print(f"Objective value: {result.fun}")
+    print(f"Gradient at the solution: {gradient}")
+
+
