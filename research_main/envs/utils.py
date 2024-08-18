@@ -67,9 +67,9 @@ def get_block_pose(model, data, block_name):
 def get_block_velocity(data):
     block_translational_velocity = data.qvel[14:17]
     block_rotational_velocity = data.qvel[17:20]
-    
-    return np.linalg.norm(block_translational_velocity), np.linalg.norm(block_rotational_velocity)
 
+    return block_translational_velocity, block_rotational_velocity
+    
 def get_joint_angles(data):
     return data.qpos[:6]
 
@@ -91,10 +91,10 @@ def wait(model, data, wait_time):
         mujoco.mj_step(model, data)
 
 def gripper_open(data):
-    data.ctrl[6] = 25
+    data.ctrl[6] = 0
 
 def gripper_close(data):
-    data.ctrl[6] = 225
+    data.ctrl[6] = 220
 
 def diffik(model, data, target_position, target_orientation_euler):
     target_orientation = R.from_euler('xyz', target_orientation_euler).as_quat()

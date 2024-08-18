@@ -21,7 +21,7 @@ def create_block_bodies(block_positions_orientations):
     """
     Creates the XML string for block bodies.
 
-    Parameters:
+    Parameters:s
     block_positions_orientations (list of tuples): Each tuple contains position [x, y, z] and Euler angles [roll, pitch, yaw].
 
     Returns:
@@ -34,8 +34,8 @@ def create_block_bodies(block_positions_orientations):
         block_bodies += f'''
         <body name="block_{i}" pos="{pos[0]} {pos[1]} {pos[2]}" quat="{quat[3]} {quat[0]} {quat[1]} {quat[2]}">
             <freejoint name="block_joint"/>
-            <geom name="orange_subbox" size="0.03 0.01 0.08" pos="0 0.01 0" type="box" rgba="0.8 0.5 0.3 1" friction="4 0.001 0.0001" density="1000"/>
-            <geom name="blue_subbox"size="0.03 0.01 0.08" pos="0 -0.01 0" type="box" rgba="0.3 0.5 0.8 1" friction="4 0.001 0.0001" density="1000"/>
+            <geom name="orange_subbox" size="0.03 0.01 0.08" pos="0 0.01 0" type="box" rgba="0.8 0.5 0.3 1" friction="7 0.01 0.001" density="100" condim="6" />
+            <geom name="blue_subbox"size="0.03 0.01 0.08" pos="0 -0.01 0" type="box" rgba="0.3 0.5 0.8 1" friction="7 0.01 0.001" density="100" condim="6" />
         </body>'''
     return block_bodies
 
@@ -60,7 +60,7 @@ def create_ur_model(marker_position=None, block_positions_orientations=None):
 
     xml_string = f'''
     <mujoco model="ur10e scene">
-        <include file="research_main/envs/universal_robots_ur10e_2f85/ur10e_2f85.xml"/>
+        <include file="universal_robots_ur10e_2f85/ur10e_2f85.xml"/>
 
         <visual>
             <global offheight="2160" offwidth="3840"/>
