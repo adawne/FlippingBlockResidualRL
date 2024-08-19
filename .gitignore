@@ -1,7 +1,12 @@
+*.pyc
+*.mp4
+*.swp
+*.png
 .vscode/
 __pycache__/
 wandb/
 log/
 research_main/__pycache__/
+research_main/envs/__pycache__/
 results/
 dcgm/
