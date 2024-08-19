@@ -1,4 +1,7 @@
 *.pyc
+*.mp4
+*.swp
+*.png
 .vscode/
 __pycache__/
 wandb/
