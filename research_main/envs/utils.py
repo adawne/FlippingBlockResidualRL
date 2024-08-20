@@ -4,8 +4,6 @@ import os
 
 from scipy.spatial.transform import Rotation as R
 
-
-
 class ActuatorController:
     def __init__(self, actuator_ids) -> None:
         self.dyn = np.array([1, 0, 0])

@@ -112,7 +112,7 @@ def main(render_mode=None, contact_vis=None):
             framerate = 60
             frames = []
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            out = cv2.VideoWriter('random_test.mp4', fourcc, framerate, (1440, 1024))
+            out = cv2.VideoWriter('random_test_1.mp4', fourcc, framerate, (1440, 1024))
 
     if contact_vis is not None:
         options = mujoco.MjvOption()
@@ -148,8 +148,7 @@ def main(render_mode=None, contact_vis=None):
         if state not in ['flip_block', 'move_back']:
             current_position, _ = get_ee_pose(model, data)
             state = fsm.reset_pose(model, data, current_position)
-            print(state)
-            if state == 'pre_flip_block':
+            if state == 'prep_flip_block':
                 block_trans_vel_preflip_hist.append(block_trans_velocity.tolist())
                 time_preflip_hist.append(data.time)
         
@@ -196,17 +195,7 @@ def main(render_mode=None, contact_vis=None):
                 if np.linalg.norm(block_trans_velocity) < 0.01 and np.linalg.norm(block_ang_velocity) < 0.001:
                     #print("Print iteration: ", print_iteration)
                     has_block_landed = True
-                    
 
-                    #if print_iteration == 2:
-                    #    landing_time = data.time
-                    #    print("Landing time: ", landing_time) 
-                    #    print("Time in the air: ", landing_time-release_time) 
-                    #    print_iteration += 1 
-
-            #terminated = has_block_landed
-
-            
         mujoco.mj_step(model, data)
 
         if render_mode is not None:
@@ -265,4 +254,4 @@ def main(render_mode=None, contact_vis=None):
 
 
 if __name__ == "__main__":
-    main(render_mode='livecam')
+    main(render_mode='video_upper')
