@@ -1,7 +1,10 @@
 import numpy as np
 #from research_main.envs.utils import *
+import matplotlib.pyplot as plt
 
-from utils import *
+from ur_kinematics import *
+from mujoco_utils import *
+
 
 class FiniteStateMachine:
     def __init__(self, model):
@@ -23,31 +26,39 @@ class FiniteStateMachine:
 
         self.has_gripper_opened = False
         self.passive_motor_angles_hold = None
-        self.print_iteration = 0 
+        self.trigger_iteration = 0
+
+        self.current_ee_pose =0
+
+        self.time_hist = []
+        self.joint_vel_hist = []
+        self.target_joint_vel_hist = []
+        self.ee_vel_hist = []
 
 
     def reset_pose(self, model, data, current_position):
         self.has_block_released = False
 
         if self.state == 'initial_pose':
-            self._initial_pose(current_position)
+            self._initial_pose(model, data, current_position)
+            #pass
         elif self.state == 'approach_block':
             self._transition_to_approach_block(current_position)
         elif self.state == 'grasp_block':
             self._transition_to_grasp_block(data, current_position)
         elif self.state == 'lift_block':
-            self._transition_to_lift_block(current_position)
+            self._transition_to_lift_block(model, data, current_position)
         elif self.state == 'prep_flip_block':
-            self._prepare_for_flip(model, data)
+            self._prepare_for_flip(model, data, current_position)
         elif self.state == 'post_flip_block':
             self.state = 'initial_pose'
 
-        if self.state not in ['prep_flip_block']:
-            move_ee_to_point(model, data, self.target_position, self.target_orientation)
+        move_ee_to_point(model, data, self.target_position, self.target_orientation)
 
         return self.state
-
-    def _initial_pose(self, current_position):
+            
+            
+    def _initial_pose(self, model, data, current_position):
         self.move_to_next_state = False
         self.target_position = [0.65, 0.2, 0.4]
         self.target_orientation = [np.pi / 2, -np.pi, 0]
@@ -70,12 +81,12 @@ class FiniteStateMachine:
         self.iteration += 1
         gripper_close(data)
 
-        if self.iteration > 1000:
+        if self.iteration > 500:
             self.move_to_next_state = True
             self.iteration = 0
             self.state = 'lift_block'
 
-    def _transition_to_lift_block(self, current_position):
+    def _transition_to_lift_block(self, model, data, current_position):
         self.move_to_next_state = False
         self.iteration += 1
         self.target_position = [0.65, 0.2, 0.7]
@@ -85,82 +96,116 @@ class FiniteStateMachine:
             self.iteration = 0
             self.state = 'prep_flip_block'
 
-    def _prepare_for_flip(self, model, data):
-        # Reassign actuator groups for the flip stage
-        self.active_motors_list = [self.shoulder_lift_id, self.elbow_id]
-        self.passive_motors_list = [self.shoulder_pan_id, self.wrist_1_id, self.wrist_2_id, self.wrist_3_id]
-        self.active_motors = ActuatorController(self.active_motors_list)
-        self.passive_motors = ActuatorController(self.passive_motors_list)
+    def _prepare_for_flip(self, model, data, current_position):
+        self.move_to_next_state = False
+        self.iteration += 1
+        self.target_position = [0.3, 0.2, 0.3]
 
-        # Set control modes
-        self.active_motors.switch_to_velocity_controller(model)
-        self.passive_motors.switch_to_position_controller(model)
-
-        target_velocities = [2*np.pi/3, -4*np.pi/6]
-        stop_elbow_angle = [1.35]
-
-        set_joint_states(data, self.active_motors_list, target_velocities)
-
-        if np.linalg.norm(np.subtract(get_specific_joint_angles(data, [self.elbow_id]), stop_elbow_angle)) < 0.02:
+        if np.linalg.norm(np.subtract(current_position, self.target_position)) < 0.02:
             self.move_to_next_state = True
             self.iteration = 0
 
-            self.active_motors_list = [self.shoulder_lift_id, self.elbow_id, self.wrist_1_id]
-            self.passive_motors_list = [self.shoulder_pan_id, self.wrist_2_id, self.wrist_3_id]
+            self.active_motors_list = [self.shoulder_pan_id, self.shoulder_lift_id, self.elbow_id, self.wrist_1_id, self.wrist_2_id, self.wrist_3_id]
+            self.passive_motors_list = []
             self.active_motors = ActuatorController(self.active_motors_list)
             self.passive_motors = ActuatorController(self.passive_motors_list)
 
             self.active_motors.switch_to_velocity_controller(model)
-            self.passive_motors.switch_to_position_controller(model)
-            self.passive_motor_angles_hold = get_specific_joint_angles(data, self.passive_motors_list)
+            self.passive_motors.switch_to_velocity_controller(model)
+            #print(get_joint_angles(data))
 
             self.state = 'flip_block'
 
-    def do_flip(self, model, data, action):
-        release = action
+    def flip_block(self, model, data, time):
+        self.time_hist.append(time)
+        
+        joint_velocities = np.array(get_joint_velocities(data)).flatten()
+        self.joint_vel_hist.append(joint_velocities)
+        
+        self.prev_ee_pose = self.current_ee_pose
+        self.current_ee_pose = np.copy(get_ee_pose(model, data)[0])
+        self.ee_velocity = get_ee_velocity(self.prev_ee_pose, self.current_ee_pose)
+        self.ee_vel_hist.append(self.ee_velocity)
 
-        if self.state == 'flip_block':
-            self.move_to_next_state = False
+        if self.has_gripper_opened == False:
+            target_trans_velocities = [0.1, 0, 2]
+            target_orientation = [0, -np.pi/2, 0]
+            target_joint_velocities = calculate_joint_velocities(model, data, target_trans_velocities, target_orientation)
+            self.target_joint_vel_hist.append(target_joint_velocities.copy())
 
-            target_velocities = [np.pi/4, -np.pi/3, -np.pi] #Worked: -np.pi/2, -np.pi (but not rotated)
-            stop_velocities = [0, 0, 0]
+            block_position, block_orientation = get_block_pose(model, data, 'block_0')
 
-            set_joint_states(data, self.passive_motors_list, self.passive_motor_angles_hold)
-            set_joint_states(data, self.active_motors_list, target_velocities)
-            
-            if release == 1:
-                set_joint_states(data, self.active_motors_list, stop_velocities)
+            shoulder_lift_vel_bias = 0
+            elbow_vel_bias = -0.075
+            biased_target_joint_velocities = target_joint_velocities.copy()
+            biased_target_joint_velocities[1] += shoulder_lift_vel_bias
+            biased_target_joint_velocities[2] += elbow_vel_bias
+            set_joint_states(data, self.active_motors_list, biased_target_joint_velocities)
+
+            if block_orientation[1] < -1.042:
                 gripper_open(data)
                 self.has_gripper_opened = True
-                self.has_block_released = True
+                self.release_time = time
+                self.release_ee_velocity = self.ee_velocity 
 
-    def do_move_back(self, model, data):
-        self.iteration += 1
-        if self.iteration > 50 and self.state == 'flip_block':       
-            self.move_to_next_state = True
-            self.iteration = 0
-            self.state = 'move_back'
+                self.active_motors_list = []
+                self.passive_motors_list = [self.shoulder_pan_id, self.shoulder_lift_id, self.elbow_id, self.wrist_1_id, self.wrist_2_id, self.wrist_3_id]
+                self.active_motors = ActuatorController(self.active_motors_list)
+                self.passive_motors = ActuatorController(self.passive_motors_list)
 
-        if self.state == 'move_back':
-            self.move_to_next_state = False
+                self.passive_motors.switch_to_position_controller(model)
+                self.passive_motor_angles_hold = get_specific_joint_angles(data, self.passive_motors_list)       
 
-            moving_velocity_actuators = [self.elbow_id, self.wrist_1_id]
-            moving_position_actuators = [self.shoulder_pan_id]
+        else:
+            self.target_joint_vel_hist.append(np.zeros((6)))
 
-            target_velocity = [np.pi, np.pi]
-            target_position = [0]
-            
-            stop_elbow_angle = 2.4
-            current_elbow_angles = get_specific_joint_angles(data, [self.elbow_id])
+            self.trigger_iteration += 1
+            set_joint_states(data, self.passive_motors_list, self.passive_motor_angles_hold)
 
-
-            set_joint_states(data, moving_velocity_actuators, target_velocity)
-            set_joint_states(data, moving_position_actuators, target_position)
-
-            if (np.linalg.norm(np.subtract(get_specific_joint_angles(data, [self.elbow_id]), stop_elbow_angle)) < 0.02):
-                self.move_to_next_state = True
-                self.iteration = 0
+            if self.trigger_iteration > 50:
                 self.state = 'post_flip_block'
-                set_joint_states(data, moving_velocity_actuators, [0, 0])
+                self.trigger_iteration = 0
+                self.active_motors_list = [self.shoulder_pan_id, self.shoulder_lift_id, self.elbow_id, self.wrist_1_id, self.wrist_2_id, self.wrist_3_id]
+                self.passive_motors_list = []
+                self.active_motors = ActuatorController(self.active_motors_list)
+                self.passive_motors = ActuatorController(self.passive_motors_list)
 
+                self.active_motors.switch_to_velocity_controller(model)
+
+    def move_back(self, model, data, time):
+        self.prev_ee_pose = self.current_ee_pose
+        self.current_ee_pose = np.copy(get_ee_pose(model, data)[0])
+        self.ee_velocity = get_ee_velocity(self.prev_ee_pose, self.current_ee_pose)
+        self.ee_vel_hist.append(self.ee_velocity)
+
+        if get_specific_joint_angles(data, [self.shoulder_lift_id])[0]  > - 2.9:
+            target_trans_velocities = [-1, 0, 0]
+            target_orientation = [0, -np.pi/2, 0]
+            target_joint_velocities = calculate_joint_velocities(model, data, target_trans_velocities, target_orientation)
+            self.target_joint_vel_hist.append(target_joint_velocities.copy())
         
+            # Apply bias only for some joints
+            shoulder_lift_vel_bias = 0
+            elbow_vel_bias = -0.075
+
+            biased_target_joint_velocities = target_joint_velocities.copy()
+            biased_target_joint_velocities[1] += shoulder_lift_vel_bias
+            biased_target_joint_velocities[2] += elbow_vel_bias
+
+            self.time_hist.append(time)
+            joint_velocities = np.array(get_joint_velocities(data)).flatten()
+            self.joint_vel_hist.append(joint_velocities)
+
+            set_joint_states(data, self.active_motors_list, biased_target_joint_velocities)
+        else:
+            if self.trigger_iteration == 0:
+                self.active_motors_list = []
+                self.passive_motors_list = [self.shoulder_pan_id, self.shoulder_lift_id, self.elbow_id, self.wrist_1_id, self.wrist_2_id, self.wrist_3_id]
+                self.active_motors = ActuatorController(self.active_motors_list)
+                self.passive_motors = ActuatorController(self.passive_motors_list)
+
+                self.passive_motors.switch_to_position_controller(model)
+                self.passive_motor_angles_hold = get_specific_joint_angles(data, self.passive_motors_list)
+                self.trigger_iteration += 1
+            else:
+                set_joint_states(data, self.passive_motors_list, self.passive_motor_angles_hold)

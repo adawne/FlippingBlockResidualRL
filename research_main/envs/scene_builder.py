@@ -17,7 +17,7 @@ def create_marker_body(marker_position):
     </body>'''
 
 
-def create_block_bodies(block_positions_orientations):
+def create_block_bodies(block_positions_orientations, block_mass=0.1):
     """
     Creates the XML string for block bodies.
 
@@ -34,12 +34,15 @@ def create_block_bodies(block_positions_orientations):
         block_bodies += f'''
         <body name="block_{i}" pos="{pos[0]} {pos[1]} {pos[2]}" quat="{quat[3]} {quat[0]} {quat[1]} {quat[2]}">
             <freejoint name="block_joint"/>
-            <geom name="blue_subbox"size="0.03 0.02 0.08" pos="0 0 0" type="box" rgba="0.3 0.5 0.8 1" friction="4 0.001 0.0001" density="1000"/>
-        </body>'''
+            <inertial pos="0 0 0" mass="{block_mass}" diaginertia="0.001 0.001 0.001"/>
+            <geom name="blue_subbox" size="0.03 0.02 0.08" pos="0 0 0" type="box" rgba="0.3 0.5 0.8 1" friction="4 0.001 0.0001"/>
+        </body>
+
+        '''
 
     return block_bodies
 
-def create_ur_model(marker_position=None, block_positions_orientations=None):
+def create_ur_model(marker_position=None, block_positions_orientations=None, block_mass=0.1):
     """
     Creates an XML string for a MuJoCo scene with a UR10e robot, an optional marker, and optional blocks.
 
@@ -56,7 +59,7 @@ def create_ur_model(marker_position=None, block_positions_orientations=None):
 
     block_bodies = ""
     if block_positions_orientations is not None:
-        block_bodies = create_block_bodies(block_positions_orientations)
+        block_bodies = create_block_bodies(block_positions_orientations, block_mass)
 
     xml_string = f'''
     <mujoco model="ur10e scene">

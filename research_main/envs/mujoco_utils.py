@@ -35,6 +35,7 @@ class ActuatorController:
             model.actuator(actuator_id).gainprm[:3] = self.gain
             model.actuator(actuator_id).biasprm[:3] = self.bias
 
+
 def move_ee_to_point(model, data, target_position, target_orientation):
     joint_angles_target = diffik(model, data, target_position, target_orientation)
     data.ctrl[:6] = joint_angles_target[:6]
@@ -52,12 +53,16 @@ def get_ee_pose(model, data):
     
     return end_effector_position, end_effector_orientation
 
+def get_ee_velocity(prev_pos, current_pos):
+    end_effector_velocity = (current_pos - prev_pos)/0.002
+
+    return end_effector_velocity
+
 def get_block_pose(model, data, block_name):
     block_id = data.body(block_name).id
+    #block_position = data.geom('blue_subbox').xpos
     block_position = data.body(block_id).xpos
-    #print(data.body(block_id))
     block_orientation = data.body(block_id).xquat
-    #print("Block id: ", block_id, "Block position: ", block_position, "Block orientation: ", block_orientation)
     block_orientation = R.from_quat(block_orientation).as_euler('zyx')
     
     return block_position, block_orientation
@@ -203,6 +208,23 @@ def has_rotated(orientation_history):
         initial_orientation = current_orientation
 
     return total_rotation_angle >= 360
+
+def has_block_landed(data, block_position):
+    floor_id = data.geom("floor").id
+    block_id = data.geom("blue_subbox").id
+
+    # Loop through all contacts
+    for i in range(data.ncon):
+        contact = data.contact[i]
+        
+        geom1_id = contact.geom1
+        geom2_id = contact.geom2
+        
+        if ((geom1_id == floor_id and geom2_id == block_id) or (geom1_id == block_id and geom2_id == floor_id)) and block_position[2] < 0.075:
+            return True
+    
+    return False
+
 
 def detect_block_contact(data):
     """

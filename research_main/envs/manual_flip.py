@@ -1,3 +1,4 @@
+import os
 import time
 import numpy as np
 import mujoco
@@ -6,252 +7,259 @@ import mediapy as media
 import cv2
 
 import matplotlib.pyplot as plt
+from datetime import datetime
 
-from utils import *
+from mujoco_utils import *
+from visual_utils import *
 from scene_builder import *
 from finite_state_machine import *
 
-def compute_reward_test(data, block_orientation_hist):
-    'To DO: Fix detect block contact function, Make a function to detect if block fall behind the robot'
-    #if has_hit_robot(state):
-    #    reward = -150
-    if has_rotated(block_orientation_hist) and has_flipped(data):
-        reward = 100
-    elif has_flipped(data) and not has_rotated(block_orientation_hist):
-        reward = -50
-    elif has_rotated(block_orientation_hist) and not has_flipped(data):
-        reward = 30
+
+def check_physical_assumptions(release_time, touch_ground_time, block_release_ver_velocity, block_release_orientation, touch_ground_orientation, time_hist, block_ang_vel_hist, g=9.81):
+    time_in_air_exp = touch_ground_time - release_time
+    time_in_air_theory = 2 * block_release_ver_velocity / g
+    time_discrepancy = np.abs(time_in_air_exp - time_in_air_theory)
+    time_discrepancy_percentage = (time_discrepancy / time_in_air_theory) * 100
+    
+    in_air_indices = [i for i, t in enumerate(time_hist) if release_time <= t <= touch_ground_time]
+
+    if in_air_indices:
+        omega_exp = np.mean(np.array(block_ang_vel_hist)[in_air_indices], axis=0)
     else:
-        reward = -100
+        omega_exp = np.zeros_like(block_release_orientation)
     
-    return reward
-
-def plot_flying_block(landing_time_pred, time_hist, block_position_hist, block_orientation_hist, block_trans_vel_hist, block_ang_vel_hist):
-    landing_time_line = landing_time_pred if has_block_landed else None
+    theta_final_theory = omega_exp + (block_release_orientation * time_in_air_exp)
     
-    # Process the data for plotting
-    block_position_hist = list(zip(*block_position_hist))  # Transpose to separate x, y, z components
-    block_orientation_hist = list(zip(*block_orientation_hist))  # Transpose to separate x, y, z components
-    block_trans_vel_hist = list(zip(*block_trans_vel_hist))  # Transpose to separate x, y, z components
-    block_ang_vel_hist = list(zip(*block_ang_vel_hist))  # Transpose to separate x, y, z components
+    # Unwrap the angles to handle discontinuities at ±pi
+    theta_final_theory = np.unwrap(theta_final_theory)
+    touch_ground_orientation = np.unwrap(touch_ground_orientation)
+    
+    # Normalize angles to the range [0, pi]
+    theta_final_theory = np.mod(theta_final_theory, np.pi)
+    touch_ground_orientation = np.mod(touch_ground_orientation, np.pi)
+    
+    theta_final_discrepancy = theta_final_theory - touch_ground_orientation
+    theta_final_discrepancy_percentage = (theta_final_discrepancy / theta_final_theory) * 100 if np.any(theta_final_theory) else 0
 
-    plt.figure(figsize=(16, 12))
+    print("="*91)
+    print("Testing Physical Assumptions")
+    print("="*91)    
+    print(f"Time in the air (experimental): {time_in_air_exp:.4f} s")
+    print(f"Time in the air (theoretical): {time_in_air_theory:.4f} s")
+    print(f"Discrepancy in time: {time_discrepancy:.4f} s ({time_discrepancy_percentage:.2f}%)")
 
-    # Plotting block position history
-    plt.subplot(4, 1, 1)
-    plt.plot(time_hist, block_position_hist[0], label='X position')
-    plt.plot(time_hist, block_position_hist[1], label='Y position')
-    plt.plot(time_hist, block_position_hist[2], label='Z position')
-    if landing_time_line:
-        plt.axvline(x=landing_time_line, color='r', linestyle='--', label='Landing time')
-    plt.xlabel('Time (s)')
-    plt.ylabel('Position (m)')
-    plt.title('Block Position History')
+    print("-"*91)
+    
+    print(f"Average angular velocity: {omega_exp}")
+    print(f"Final angle (experimental): {touch_ground_orientation}")
+    print(f"Final angle (theoretical): {theta_final_theory}")
+    print(f"Discrepancy in final angle: {theta_final_discrepancy} ({theta_final_discrepancy_percentage}%)")
+    
+    print("="*91)
+
+    return time_discrepancy, theta_final_discrepancy
+
+def plot_discrepancy_vs_mass(output_dir, masses, time_discrepancies, angle_discrepancies, block_release_ver_velocity):
+    plt.figure(figsize=(8, 18))
+
+    plt.subplot(3, 1, 1)
+    plt.plot(masses, time_discrepancies, 'o-', color='blue', label='Time Discrepancy')
+    plt.xlabel('Block Mass (kg)')
+    plt.ylabel('Time Discrepancy (s)')
+    plt.title('Mass vs Time Discrepancy')
+    plt.grid(True)
     plt.legend()
 
-    # Plotting block orientation history
-    plt.subplot(4, 1, 2)
-    plt.plot(time_hist, block_orientation_hist[0], label='X orientation')
-    plt.plot(time_hist, block_orientation_hist[1], label='Y orientation')
-    plt.plot(time_hist, block_orientation_hist[2], label='Z orientation')
-    if landing_time_line:
-        plt.axvline(x=landing_time_line, color='r', linestyle='--', label='Landing time')
-    plt.xlabel('Time (s)')
-    plt.ylabel('Orientation')
-    plt.title('Block Orientation History')
+    plt.subplot(3, 1, 2)
+    angle_discrepancies = np.array(angle_discrepancies)
+    plt.plot(masses, angle_discrepancies[:, 0], 'o-', color='red', label='Angle Discrepancy X')
+    plt.plot(masses, angle_discrepancies[:, 1], 'o-', color='green', label='Angle Discrepancy Y')
+    plt.plot(masses, angle_discrepancies[:, 2], 'o-', color='orange', label='Angle Discrepancy Z')
+    plt.xlabel('Block Mass (kg)')
+    plt.ylabel('Angle Discrepancy (radians)')
+    plt.title('Mass vs Angle Discrepancy')
+    plt.grid(True)
     plt.legend()
 
-    # Plotting translational velocity qvel[14:17]
-    plt.subplot(4, 1, 3)
-    plt.plot(time_hist, block_trans_vel_hist[0], label='Vx')
-    plt.plot(time_hist, block_trans_vel_hist[1], label='Vy')
-    plt.plot(time_hist, block_trans_vel_hist[2], label='Vz')
-    if landing_time_line:
-        plt.axvline(x=landing_time_line, color='r', linestyle='--', label='Landing time')
-    plt.xlabel('Time (s)')
-    plt.ylabel('Velocity (m/s)')
-    plt.title('Translational Velocity qvel[14:17]')
-    plt.legend()
-
-    # Plotting angular velocity qvel[17:20]
-    plt.subplot(4, 1, 4)
-    plt.plot(time_hist, block_ang_vel_hist[0], label='Omega x')
-    plt.plot(time_hist, block_ang_vel_hist[1], label='Omega y')
-    plt.plot(time_hist, block_ang_vel_hist[2], label='Omega z')
-    if landing_time_line:
-        plt.axvline(x=landing_time_line, color='r', linestyle='--', label='Landing time')
-    plt.xlabel('Time (s)')
-    plt.ylabel('Angular Velocity (rad/s)')
-    plt.title('Angular Velocity qvel[17:20]')
+    plt.subplot(3, 1, 3)
+    plt.plot(masses, block_release_ver_velocity, 'o-', color='purple', label='Block Release Vertical Velocity')
+    plt.xlabel('Block Mass (kg)')
+    plt.ylabel('Vertical Velocity (m/s)')
+    plt.title('Mass vs Block Release Vertical Velocity')
+    plt.grid(True)
     plt.legend()
 
     plt.tight_layout()
-    plt.savefig('block_release_velocities_and_positions_lighter.png')
-
-
-def main(render_mode=None, contact_vis=None):
-    block_positions_orientations = [([0.65, 0.2, 0.1], [0, 0, 0])]
-    world_xml_model = create_ur_model(marker_position=None, block_positions_orientations=block_positions_orientations)
     
-    model = mujoco.MjModel.from_xml_string(world_xml_model)
-    data = mujoco.MjData(model)
-    contact = mujoco.MjContact()
+    filename = os.path.join(output_dir, 'discrepancy_vs_mass.png')
+    plt.savefig(filename)
+    plt.close()
 
-    mujoco.mj_kinematics(model, data)
+def main(iteration=1, render_mode=None, contact_vis=None, block_mass=0.1):
 
-    fsm = FiniteStateMachine(model)
-    
-    if render_mode is not None:
-        camera = mujoco.MjvCamera()
-        mujoco.mjv_defaultFreeCamera(model, camera)
+    masses = []
+    time_discrepancies = []
+    angle_discrepancies = []
+    block_release_ver_velocities = []
+    local_time = datetime.now()
+
+    for i in range(iteration):
+        block_mass = round(np.random.uniform(0.050, 0.400), 3)
+        print(f"Running iteration {i+1} with block mass: {block_mass}")
+
+        output_dir = f'outputs/{local_time}'
+        sub_output_dir = f'outputs/{local_time}/{i}_{block_mass:.3f}'
         
-        if render_mode == 'livecam':
-            viewer = mujoco.viewer.launch_passive(model, data)
-        else:
-            renderer = mujoco.Renderer(model, height=1024, width=1440)
-            framerate = 60
-            frames = []
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            out = cv2.VideoWriter('random_test_1.mp4', fourcc, framerate, (1440, 1024))
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        if not os.path.exists(sub_output_dir):
+            os.makedirs(sub_output_dir)
 
-    if contact_vis is not None:
-        options = mujoco.MjvOption()
-        mujoco.mjv_defaultOption(options)
-        options.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
-        options.flags[mujoco.mjtVisFlag.mjVIS_CONTACTFORCE] = True
-
-        # tweak scales of contact visualization elements
-        model.vis.scale.contactwidth = 0.1
-        model.vis.scale.contactheight = 0.03
-        model.vis.scale.forcewidth = 0.05
-        model.vis.map.force = 0.3
-
-    state = 'initial_pose'
-    has_block_landed = False
-
-    block_trans_vel_preflip_hist = []
-    block_position_hist = []
-    block_orientation_hist = []
-    block_trans_vel_hist = []
-    block_ang_vel_hist = []
-    time_hist = []
-    time_preflip_hist = []
-    
-    print_iteration = 0
-
-    while data.time < 6:
-    #while has_block_landed == False:
-        # Reset pose
-        block_position, block_orientation = get_block_pose(model, data, 'block_0')
-        block_trans_velocity, block_ang_velocity = get_block_velocity(data)
-                
-        if state not in ['flip_block', 'move_back']:
-            current_position, _ = get_ee_pose(model, data)
-            state = fsm.reset_pose(model, data, current_position)
-            if state == 'prep_flip_block':
-                block_trans_vel_preflip_hist.append(block_trans_velocity.tolist())
-                time_preflip_hist.append(data.time)
+        block_positions_orientations = [([0.65, 0.2, 0], [0, 0, 0])]
+        world_xml_model = create_ur_model(marker_position=None, block_positions_orientations=block_positions_orientations, block_mass=block_mass)
         
-        # Flip block
-        else:
-            release_elbow_angle = 1.1
-            release_wrist_1_angle = -np.pi
-            if get_specific_joint_angles(data, [model.joint('wrist_1_joint').id])[0] < release_wrist_1_angle:
-                action = 1
+        model = mujoco.MjModel.from_xml_string(world_xml_model)
+        data = mujoco.MjData(model)
+        contact = mujoco.MjContact()
+
+        mujoco.mj_kinematics(model, data)
+
+        fsm = FiniteStateMachine(model)
+        renderer = SimulationRenderer(model, data, output_dir=sub_output_dir, render_mode=render_mode, contact_vis=contact_vis)
+
+        state = 'initial_pose'
+        has_block_steady = False
+
+        block_trans_vel_preflip_hist = []
+        block_position_hist = []
+        block_orientation_hist = []
+        block_trans_vel_hist = []
+        block_ang_vel_hist = []
+        time_hist = []
+        qvel_hist = []
+
+        trigger_iteration = 0
+        screenshot_iteration = 0
+
+
+        while has_block_steady == False and data.time < 6:
+            mujoco.mj_step(model, data)
+            #qvel_hist.append(data.qvel.tolist())
+            #data.qfrc_applied[17] = 0.01
+
+            block_position, block_orientation = get_block_pose(model, data, 'block_0')
+            block_trans_velocity, block_ang_velocity = get_block_velocity(data)
+            time = data.time
+            #time_hist.append(time)
+
+            # Initial Pose
+            if state not in ['flip_block', 'move_back']:
+                current_position, _ = get_ee_pose(model, data)
+                state = fsm.reset_pose(model, data, current_position)
+                if state == 'approach_block':
+                    block_trans_vel_preflip_hist.append(block_trans_velocity.tolist())
+            
+            # Flip block
             else:
-                action = 0
-            fsm.do_flip(model, data, action)
-
-            if fsm.has_block_released:
                 block_position_hist.append(block_position.tolist())
                 block_orientation_hist.append(block_orientation.tolist())
                 block_trans_vel_hist.append(block_trans_velocity.tolist())
                 block_ang_vel_hist.append(block_ang_velocity.tolist())
-                time_hist.append(data.time)
+                time_hist.append(time)
 
-                # To log the release state of the block
-                if print_iteration == 0:
-                    release_time = data.time
-                    release_block_pos = get_block_pose(model, data, 'block_0')[0]
-                    #print("Lift pos: ", fsm.lift_block_pos)
-                    #print(release_block_pos[2], fsm.lift_block_pos[2], release_time, fsm.lift_time)
-                    block_init_ver_velocity = block_trans_velocity[2]
-                    time_flight_prediction = 2 * block_init_ver_velocity / 9.81
-                    
-                    print("Release time: ", release_time, "Block position :", release_block_pos, "Release translational velocity: ", block_trans_velocity, "Release angular velocity: ", block_ang_velocity)
-                    print_iteration += 1
-
-                if block_position[2] < 1e-1:
-                    if print_iteration == 1:
-                        print("The block touch the ground: ", data.time)
-                        landing_time_pred = release_time + time_flight_prediction
-                        closest_index = np.argmin(np.abs(np.array(time_hist) - landing_time_pred))
-                        position_at_predicted_landing = block_position_hist[closest_index]
-                        print("Landing time prediction: ", landing_time_pred, "Position at landing time prediction: ", position_at_predicted_landing)
-                        print_iteration += 1
-                        #has_block_landed = True
-
-
-                if np.linalg.norm(block_trans_velocity) < 0.01 and np.linalg.norm(block_ang_velocity) < 0.001:
-                    #print("Print iteration: ", print_iteration)
-                    has_block_landed = True
-
-        mujoco.mj_step(model, data)
-
-        if render_mode is not None:
-            if render_mode == 'livecam':
-                viewer.sync()
-            else:
-                if len(frames) < data.time * framerate:
-                    if render_mode == 'video_upper':
-                        camera.distance = 3
-                        camera.azimuth = 190
-                        camera.elevation = -45
-                    elif render_mode == 'video_side':
-                        camera.distance = 3
-                        camera.azimuth = 130
-                        camera.elevation = -25
-                    if contact_vis is not None:
-                        renderer.update_scene(data, camera, options)
+                if fsm.has_gripper_opened == False:
+                    fsm.flip_block(model, data, time)
+                else:
+                    if fsm.state == 'post_flip_block':
+                        fsm.move_back(model, data, time)
+                        if screenshot_iteration == 0:
+                            renderer.take_screenshot(time)
+                            screenshot_iteration += 1
                     else:
-                        renderer.update_scene(data, camera)
-                    pixels = renderer.render()
-                    frames.append(pixels)
-                    out.write(cv2.cvtColor(pixels, cv2.COLOR_RGB2BGR))
+                        fsm.flip_block(model, data, time)
 
-    highest_velocity_x = max(sub_array[0] for sub_array in block_trans_vel_preflip_hist)
-    print("Highest velocity in pre flip pose: ", highest_velocity_x)
+                    # To log the release state of the block
+                    if trigger_iteration == 0:
+                        release_time = np.copy(time)
+                        block_release_pos = np.copy(block_position)
+                        block_release_orientation = np.copy(block_orientation)
 
-    block_trans_vel_preflip_hist = list(zip(*block_trans_vel_preflip_hist))
-    plt.figure(figsize=(10,6))
-    plt.plot(time_preflip_hist, block_trans_vel_preflip_hist[0], label='X velocity')
-    plt.plot(time_preflip_hist, block_trans_vel_preflip_hist[1], label='Y velocity')
-    plt.plot(time_preflip_hist, block_trans_vel_preflip_hist[2], label='Z velocity')
-    plt.xlabel('Time (s)')
-    plt.ylabel('Velocity (m/s)')
-    plt.title('Block Velocity History Preflip')
-    plt.legend()
-    plt.savefig('block_velocity_preflip.png')
-    
-    #plot_flying_block(landing_time_pred, time_hist, block_position_hist, block_orientation_hist, block_trans_vel_hist, block_trans_vel_hist)
-    
-    #if has_rotated(block_orientation_hist) and has_flipped(data):
-    #    reward = 100
-    #elif has_flipped(data) and not has_rotated(block_orientation_hist):
-    #    reward = -50
-    #elif has_rotated(block_orientation_hist) and not has_flipped(data):
-    #    reward = 30
-    #else:
-    #    reward = -100
+                        block_release_transvel = np.copy(block_trans_velocity)
+                        block_release_angvel = np.copy(block_ang_velocity)
 
-    #print(get_block_pose(model, data, 'block_0'))
-    #print("Reward: ", reward,  has_rotated(block_orientation_hist), has_flipped(data))
-    if render_mode != 'livecam':
-        out.release()
+                        block_release_ver_velocity = block_release_transvel[2]
+                        time_flight_prediction = 2 * block_release_ver_velocity / 9.81
+                        landing_time_pred = release_time + time_flight_prediction
+                        renderer.take_screenshot(time)
+                        trigger_iteration += 1
+
+                    # To log the state of the block when touch the floor for the first time
+                    if has_block_landed(data, block_position) == True:
+                        if trigger_iteration == 1:
+                            touch_ground_time = np.copy(time)
+                            renderer.take_screenshot(time)
+                            
+                            closest_index = np.argmin(np.abs(np.array(time_hist) - touch_ground_time))
+                            block_touch_ground_position = block_position_hist[closest_index]
+                            block_touch_ground_orientation = block_orientation_hist[closest_index]
+                            
+                            trigger_iteration += 1
+
+                    # To log the state of the block when already landed steadily
+                    if np.linalg.norm(block_trans_velocity) < 0.01 and np.linalg.norm(block_ang_velocity) < 0.01:
+                        if trigger_iteration == 2:
+                            has_block_steady = True
+                            steady_time = np.copy(time)
+                            
+                            closest_index = np.argmin(np.abs(np.array(time_hist) - steady_time))
+                            block_steady_position = block_position_hist[closest_index]
+                            block_steady_orientation = block_orientation_hist[closest_index]
+                            
+                            trigger_iteration += 1
 
 
-#========================================================================
+            renderer.render_frame(time)
+
+        print("="*91)
+        print("Iteration: ", i)
+        print("Block release time: ", release_time)
+        print("Release EE velocity: ", fsm.release_ee_velocity) 
+        print (f"Block release position : {block_release_pos} Block release orientation: {block_release_orientation}")
+        print(f"Block translational release velocity: {block_release_transvel} Block angular release velocity: {block_release_transvel}")
+
+        print("="*91)
+
+        print(f"Block touch the ground time: {touch_ground_time}")
+
+        print("Position when the block touch the ground: ", block_touch_ground_position) 
+        print("Orientation when the block touch the ground: ", block_touch_ground_orientation)
+        print("Position when the block landed steadily: ", block_steady_position) 
+        print("Orientation when the block landed steadily: ", block_steady_orientation)
+
+        
+        plot_joint_velocities(sub_output_dir, release_time, fsm.time_hist, fsm.joint_vel_hist, fsm.target_joint_vel_hist)
+        plot_block_pose(sub_output_dir, release_time, landing_time_pred, touch_ground_time, steady_time,  time_hist, block_position_hist, block_orientation_hist, block_trans_vel_hist, block_ang_vel_hist)
+        plot_velocity_comparison(sub_output_dir, release_time, time_hist, fsm.ee_vel_hist, block_trans_vel_hist)
+        time_discrepancy, angle_discrepancy = check_physical_assumptions(
+            release_time=release_time,  
+            touch_ground_time=touch_ground_time, 
+            block_release_ver_velocity=block_release_ver_velocity, 
+            block_release_orientation=block_release_orientation, 
+            touch_ground_orientation=block_touch_ground_orientation,
+            time_hist = time_hist,
+            block_ang_vel_hist = block_ang_vel_hist
+        )
+
+        masses.append(block_mass)
+        time_discrepancies.append(time_discrepancy)
+        angle_discrepancies.append(angle_discrepancy)
+        block_release_ver_velocities.append(block_release_ver_velocity)
+
+        renderer.close()
+
+    plot_discrepancy_vs_mass(output_dir, masses, time_discrepancies, angle_discrepancies, block_release_ver_velocities)
 
 
 if __name__ == "__main__":
-    main(render_mode='video_upper')
+    main(iteration=30, render_mode='video_side')
+
