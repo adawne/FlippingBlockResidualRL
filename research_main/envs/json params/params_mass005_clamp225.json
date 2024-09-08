@@ -1,0 +1,230 @@
+{
+    "smallest_norm_difference": {
+        "norm_value": 0.5473673566659588,
+        "configuration": {
+            "iteration": 0,
+            "render_modes": [
+                "livecam"
+            ],
+            "contact_vis": false,
+            "random_mass": false,
+            "block_mass": 0.05,
+            "block_size": [
+                0.03,
+                0.02,
+                0.08
+            ],
+            "ee_flip_target_velocity": [
+                0.1,
+                0,
+                0.75
+            ],
+            "sim_description": "default_sim",
+            "block_solimp": [
+                0.99,
+                0.995,
+                1e-07,
+                0.5,
+                2
+            ],
+            "block_solref": [
+                0.005,
+                2
+            ],
+            "block_friction": [
+                10,
+                0.005,
+                0.0001
+            ],
+            "cone": "pyramidal",
+            "noslip_iterations": 1,
+            "noslip_tolerance": 1e-06,
+            "impratio": 1,
+            "pad_friction": 5,
+            "pad_solimp": [
+                0.99,
+                0.99,
+                0.001
+            ],
+            "pad_solref": [
+                0.02,
+                2
+            ],
+            "clampness": 225,
+            "use_combinations": false
+        },
+        "deltas": [
+            0.4174819692111975,
+            -0.024740519129344638,
+            -0.35313982392280574
+        ]
+    },
+    "smallest_velocity_difference_x": {
+        "velocity_difference": 0.2988461891423596,
+        "configuration": {
+            "iteration": 0,
+            "render_modes": [
+                "livecam"
+            ],
+            "contact_vis": false,
+            "random_mass": false,
+            "block_mass": 0.05,
+            "block_size": [
+                0.03,
+                0.02,
+                0.08
+            ],
+            "ee_flip_target_velocity": [
+                0.1,
+                0,
+                0.75
+            ],
+            "sim_description": "default_sim",
+            "block_solimp": [
+                0.99,
+                0.995,
+                1e-07,
+                0.5,
+                2
+            ],
+            "block_solref": [
+                0.005,
+                2
+            ],
+            "block_friction": [
+                10,
+                0.005,
+                0.0001
+            ],
+            "cone": "elliptic",
+            "noslip_iterations": 5,
+            "noslip_tolerance": 1e-10,
+            "impratio": 1,
+            "pad_friction": 5,
+            "pad_solimp": [
+                0.99,
+                0.999,
+                0.001
+            ],
+            "pad_solref": [
+                0.004,
+                1
+            ],
+            "clampness": 225,
+            "use_combinations": false
+        },
+        "delta_x": 0.2988461891423596
+    },
+    "smallest_velocity_difference_y": {
+        "velocity_difference": 0.0033991230650056783,
+        "configuration": {
+            "iteration": 0,
+            "render_modes": [
+                "livecam"
+            ],
+            "contact_vis": false,
+            "random_mass": false,
+            "block_mass": 0.05,
+            "block_size": [
+                0.03,
+                0.02,
+                0.08
+            ],
+            "ee_flip_target_velocity": [
+                0.1,
+                0,
+                0.75
+            ],
+            "sim_description": "default_sim",
+            "block_solimp": [
+                0.99,
+                0.995,
+                1e-07,
+                0.5,
+                2
+            ],
+            "block_solref": [
+                0.005,
+                2
+            ],
+            "block_friction": [
+                10,
+                0.005,
+                0.0001
+            ],
+            "cone": "pyramidal",
+            "noslip_iterations": 1,
+            "noslip_tolerance": 1e-06,
+            "impratio": 1,
+            "pad_friction": 5,
+            "pad_solimp": [
+                0.97,
+                0.999,
+                0.001
+            ],
+            "pad_solref": [
+                0.02,
+                1
+            ],
+            "clampness": 225,
+            "use_combinations": false
+        },
+        "delta_y": 0.0033991230650056783
+    },
+    "smallest_velocity_difference_z": {
+        "velocity_difference": 0.35313982392280574,
+        "configuration": {
+            "iteration": 0,
+            "render_modes": [
+                "livecam"
+            ],
+            "contact_vis": false,
+            "random_mass": false,
+            "block_mass": 0.05,
+            "block_size": [
+                0.03,
+                0.02,
+                0.08
+            ],
+            "ee_flip_target_velocity": [
+                0.1,
+                0,
+                0.75
+            ],
+            "sim_description": "default_sim",
+            "block_solimp": [
+                0.99,
+                0.995,
+                1e-07,
+                0.5,
+                2
+            ],
+            "block_solref": [
+                0.005,
+                2
+            ],
+            "block_friction": [
+                10,
+                0.005,
+                0.0001
+            ],
+            "cone": "pyramidal",
+            "noslip_iterations": 1,
+            "noslip_tolerance": 1e-06,
+            "impratio": 1,
+            "pad_friction": 5,
+            "pad_solimp": [
+                0.99,
+                0.99,
+                0.001
+            ],
+            "pad_solref": [
+                0.02,
+                2
+            ],
+            "clampness": 225,
+            "use_combinations": false
+        },
+        "delta_z": -0.35313982392280574
+    }
+}

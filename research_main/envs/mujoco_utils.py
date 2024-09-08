@@ -96,8 +96,8 @@ def wait(model, data, wait_time):
 def gripper_open(data):
     data.ctrl[6] = 0
 
-def gripper_close(data):
-    data.ctrl[6] = 220
+def gripper_close(data, clampness=225):
+    data.ctrl[6] = clampness
 
 def diffik(model, data, target_position, target_orientation_euler):
     target_orientation = R.from_euler('xyz', target_orientation_euler).as_quat()
@@ -220,7 +220,7 @@ def has_block_landed(data, block_position):
         geom1_id = contact.geom1
         geom2_id = contact.geom2
         
-        if ((geom1_id == floor_id and geom2_id == block_id) or (geom1_id == block_id and geom2_id == floor_id)) and block_position[2] < 0.075:
+        if ((geom1_id == floor_id and geom2_id == block_id) or (geom1_id == block_id and geom2_id == floor_id)):
             return True
     
     return False

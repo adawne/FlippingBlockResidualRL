@@ -10,3 +10,4 @@ research_main/__pycache__/
 research_main/envs/__pycache__/
 results/
 dcgm/
+outputs/

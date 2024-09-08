@@ -4,88 +4,106 @@ import mujoco
 import matplotlib.pyplot as plt
 import numpy as np
 
-
 class SimulationRenderer:
-    def __init__(self, model, data, output_dir, render_mode=None, contact_vis=None, framerate=60):
+    def __init__(self, model, data, output_dir, local_time, render_modes, contact_vis, framerate=60):
         self.model = model
         self.data = data
         self.output_dir = output_dir
-        self.render_mode = render_mode
+        self.render_modes = render_modes or []
         self.contact_vis = contact_vis
         self.framerate = framerate
-        self.frames = []
+        self.frames = {}
+        self.renderers = {}
+        self.cameras = {}
+        self.outs = {}
 
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
 
-        self.camera = mujoco.MjvCamera()
-        mujoco.mjv_defaultFreeCamera(self.model, self.camera)
-
-        if self.render_mode is not None:
-            if self.render_mode == 'livecam':
+        for mode in self.render_modes:
+            self.cameras[mode] = mujoco.MjvCamera()
+            mujoco.mjv_defaultFreeCamera(self.model, self.cameras[mode])
+            
+            if mode == 'livecam':
                 self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
             else:
-                self.renderer = mujoco.Renderer(self.model, height=1024, width=1440)
-                self.fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                self.out = cv2.VideoWriter(os.path.join(self.output_dir, 'random_test.mp4'), self.fourcc, self.framerate, (1440, 1024))
+                self.renderers[mode] = mujoco.Renderer(self.model, height=1024, width=1440)
+                self.frames[mode] = []
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                self.outs[mode] = cv2.VideoWriter(os.path.join(self.output_dir, f'{mode}_{local_time}.mp4'), fourcc, self.framerate, (1440, 1024))
 
-            if self.contact_vis is not None:
-                self.options = mujoco.MjvOption()
-                mujoco.mjv_defaultOption(self.options)
-                self.options.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
-                self.options.flags[mujoco.mjtVisFlag.mjVIS_CONTACTFORCE] = True
-
-                # tweak scales of contact visualization elements
-                self.model.vis.scale.contactwidth = 0.1
-                self.model.vis.scale.contactheight = 0.03
-                self.model.vis.scale.forcewidth = 0.05
-                self.model.vis.map.force = 0.3
+        if self.contact_vis:
+            self.options = mujoco.MjvOption()
+            mujoco.mjv_defaultOption(self.options)
+            self.options.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
+            self.options.flags[mujoco.mjtVisFlag.mjVIS_CONTACTFORCE] = True
+            # tweak scales of contact visualization elements
+            self.model.vis.scale.contactwidth = 0.1
+            self.model.vis.scale.contactheight = 0.03
+            self.model.vis.scale.forcewidth = 0.05
+            self.model.vis.map.force = 0.3
 
     def render_frame(self, time):
-        if self.render_mode == 'livecam':
+        if 'livecam' in self.render_modes:
             self.viewer.sync()
-        else:
-            if len(self.frames) < time * self.framerate:
-                if self.render_mode == 'video_top':
-                    self.camera.distance = 3
-                    self.camera.azimuth = 190
-                    self.camera.elevation = -45
-                elif self.render_mode == 'video_side':
-                    self.camera.distance = 3
-                    self.camera.azimuth = 130
-                    self.camera.elevation = -25
-                elif self.render_mode == 'video_front':
-                    self.camera.distance = 3
-                    self.camera.azimuth = 180
-                    self.camera.elevation = -50
+        
+        for mode in self.render_modes:
+            if mode == 'livecam':
+                continue
 
-                if self.contact_vis is not None:
-                    self.renderer.update_scene(self.data, self.camera, self.options)
+            if len(self.frames[mode]) < time * self.framerate:
+                if mode == 'video_top':
+                    self.cameras[mode].distance = 3.2
+                    self.cameras[mode].azimuth = 180
+                    self.cameras[mode].elevation = -50
+                elif mode == 'video_side':
+                    self.cameras[mode].distance = 3
+                    self.cameras[mode].azimuth = 130
+                    self.cameras[mode].elevation = -25
+                elif mode == 'video_block':
+                    self.cameras[mode].distance = 2.25
+                    self.cameras[mode].azimuth = 155
+                    self.cameras[mode].elevation = -25
+                elif mode == 'video_front':
+                    self.cameras[mode].distance = 3
+                    self.cameras[mode].azimuth = 180
+                    self.cameras[mode].elevation = -10
+
+                if self.contact_vis:
+                    self.renderers[mode].update_scene(self.data, self.cameras[mode], self.options)
                 else:
-                    self.renderer.update_scene(self.data, self.camera)
-                pixels = self.renderer.render()
-                self.frames.append(pixels)
-                self.out.write(cv2.cvtColor(pixels, cv2.COLOR_RGB2BGR))
+                    self.renderers[mode].update_scene(self.data, self.cameras[mode])
+
+                pixels = self.renderers[mode].render()
+                self.frames[mode].append(pixels)
+                self.outs[mode].write(cv2.cvtColor(pixels, cv2.COLOR_RGB2BGR))
 
     def take_screenshot(self, time_step, file_name='screenshot'):
-        if self.render_mode != 'livecam':
-            file_path = os.path.join(self.output_dir, f"{file_name}_timestep_{time_step:.4f}.png")
-            pixels = self.renderer.render()
-            cv2.imwrite(file_path, cv2.cvtColor(pixels, cv2.COLOR_RGB2BGR))
-            print(f"Screenshot taken at timestep {time_step:.4f} and saved to {file_path}")
-        else:
-            pass
+        for mode in self.render_modes:
+            if mode != 'livecam':
+                file_path = os.path.join(self.output_dir, f"{file_name}_{mode}_timestep_{time_step:.4f}.png")
+                if self.contact_vis:
+                    self.renderers[mode].update_scene(self.data, self.cameras[mode], self.options)
+                else:
+                    self.renderers[mode].update_scene(self.data, self.cameras[mode])
+                
+                pixels = self.renderers[mode].render()
+                cv2.imwrite(file_path, cv2.cvtColor(pixels, cv2.COLOR_RGB2BGR))
+                #print(f"Screenshot taken for {mode} at timestep {time_step:.4f} and saved to {file_path}")
 
     def close(self):
-        if self.render_mode == 'livecam':
+        if 'livecam' in self.render_modes:
             self.viewer.close()
-        else:
-            if hasattr(self, 'out') and self.out.isOpened():
-                self.out.release()
+        
+        for mode in self.render_modes:
+            if mode != 'livecam' and hasattr(self, 'outs') and self.outs[mode].isOpened():
+                self.outs[mode].release()
             
-            self.frames.clear()
-            if hasattr(self, 'renderer'):
-                del self.renderer
+            if mode in self.frames:
+                self.frames[mode].clear()
+            
+            if mode in self.renderers:
+                del self.renderers[mode]
 
 
 
@@ -161,7 +179,6 @@ def plot_block_pose(output_dir, release_time, landing_time_pred, touch_ground_ti
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, 'block_flying_poses.png'))
 
-
 def plot_joint_velocities(output_dir, release_time, time_hist, joint_vel_hist, target_joint_vel_hist):
     joint_vel_hist_np = np.array(joint_vel_hist)
     target_joint_vel_hist_np = np.array(target_joint_vel_hist)
@@ -185,6 +202,27 @@ def plot_joint_velocities(output_dir, release_time, time_hist, joint_vel_hist, t
 
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, 'joint_velocities_subplot.png'))
+
+def plot_velocity_ee(output_dir, release_time, time_hist, end_effector_vel_hist):
+    time_hist_np = np.array(time_hist[1:])
+    end_effector_vel_hist_np = np.array(end_effector_vel_hist[1:])  # Shape: (num_samples-1, 3)
+
+    velocity_components = ['X', 'Y', 'Z']
+
+    fig, axs = plt.subplots(3, 1, figsize=(8, 12))  # 3 rows, 1 column of subplots (one for each axis)
+
+    for i in range(3):
+        axs[i].plot(time_hist_np, end_effector_vel_hist_np[:, i], label=f'End Effector {velocity_components[i]} Velocity')
+        
+        axs[i].axvline(x=release_time, color='r', linestyle=':', label='Release Time')
+
+        axs[i].set_xlabel('Time (s)')
+        axs[i].set_ylabel('Velocity (m/s)')
+        axs[i].set_title(f'{velocity_components[i]} Velocity Over Time')
+        axs[i].legend()
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'end_effector_velocity.png'))
 
 def plot_velocity_comparison(output_dir, release_time, time_hist, end_effector_vel_hist, block_vel_hist):
     # Ignore the first element of each list
@@ -220,32 +258,32 @@ def plot_velocity_comparison(output_dir, release_time, time_hist, end_effector_v
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, 'end_effector_block_velocity_comparison.png'))
 
-def plot_discrepancy_vs_mass(masses, time_discrepancies, angle_discrepancies, block_release_ver_velocity, filename='discrepancy_vs_mass.png'):
-    plt.figure(figsize=(8, 18))  # Adjusting the figure size for vertical layout
+def plot_discrepancy_vs_mass(output_dir, masses, time_discrepancies, angle_discrepancies, height_discrepancies, landing_velocities_discrepancies, block_release_ver_velocity):
+    plt.figure(figsize=(8, 30))  # Increased the figure size to accommodate the extra subplot
 
     # Plot Time Discrepancy
-    plt.subplot(3, 1, 1)
+    plt.subplot(5, 1, 1)
     plt.plot(masses, time_discrepancies, 'o-', color='blue', label='Time Discrepancy')
     plt.xlabel('Block Mass (kg)')
-    plt.ylabel('Time Discrepancy (s)')
+    plt.ylabel('Time Discrepancy (%)')
     plt.title('Mass vs Time Discrepancy')
     plt.grid(True)
     plt.legend()
 
-    # Plot Angle Discrepancy for X, Y, Z axes
-    plt.subplot(3, 1, 2)
-    angle_discrepancies = np.array(angle_discrepancies)  # Convert to NumPy array for easy slicing
+    # Plot Angle Discrepancy
+    plt.subplot(5, 1, 2)
+    angle_discrepancies = np.array(angle_discrepancies)
     plt.plot(masses, angle_discrepancies[:, 0], 'o-', color='red', label='Angle Discrepancy X')
     plt.plot(masses, angle_discrepancies[:, 1], 'o-', color='green', label='Angle Discrepancy Y')
     plt.plot(masses, angle_discrepancies[:, 2], 'o-', color='orange', label='Angle Discrepancy Z')
     plt.xlabel('Block Mass (kg)')
-    plt.ylabel('Angle Discrepancy (radians)')
+    plt.ylabel('Angle Discrepancy (%)')
     plt.title('Mass vs Angle Discrepancy')
     plt.grid(True)
     plt.legend()
 
     # Plot Block Release Vertical Velocity
-    plt.subplot(3, 1, 3)
+    plt.subplot(5, 1, 3)
     plt.plot(masses, block_release_ver_velocity, 'o-', color='purple', label='Block Release Vertical Velocity')
     plt.xlabel('Block Mass (kg)')
     plt.ylabel('Vertical Velocity (m/s)')
@@ -253,6 +291,26 @@ def plot_discrepancy_vs_mass(masses, time_discrepancies, angle_discrepancies, bl
     plt.grid(True)
     plt.legend()
 
+    # Plot Height Discrepancy
+    plt.subplot(5, 1, 4)
+    plt.plot(masses, height_discrepancies, 'o-', color='brown', label='Height Discrepancy')
+    plt.xlabel('Block Mass (kg)')
+    plt.ylabel('Height Discrepancy (%)')
+    plt.title('Mass vs Height Discrepancy')
+    plt.grid(True)
+    plt.legend()
+
+    # Plot Landing Velocity Discrepancy
+    plt.subplot(5, 1, 5)
+    plt.plot(masses, landing_velocities_discrepancies, 'o-', color='cyan', label='Landing Velocity Discrepancy')
+    plt.xlabel('Block Mass (kg)')
+    plt.ylabel('Landing Velocity Discrepancy (%)')
+    plt.title('Mass vs Landing Velocity Discrepancy')
+    plt.grid(True)
+    plt.legend()
+
     plt.tight_layout()
+    
+    filename = os.path.join(output_dir, 'discrepancy_vs_mass.png')
     plt.savefig(filename)
     plt.close()
