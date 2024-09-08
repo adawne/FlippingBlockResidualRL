@@ -10,4 +10,5 @@ research_main/__pycache__/
 research_main/envs/__pycache__/
 results/
 dcgm/
-outputs/
+research_main/envs/outputs/
+research_main/envs/json params/
