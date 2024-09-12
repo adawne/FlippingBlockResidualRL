@@ -1,6 +1,7 @@
 import os
 import time
 import numpy as np
+import pandas as pd
 import mujoco
 import mujoco.viewer
 import mediapy as media
@@ -90,15 +91,19 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
             mujoco.mj_step(model, data)
             if use_combinations is not True:
                 renderer.render_frame(time)
-            contact_info = [time]  
-            for j in range(data.ncon):
-                geom1_name = model.geom(data.contact[j].geom1).name
-                geom2_name = model.geom(data.contact[j].geom2).name
-                distance = data.contact[j].dist
-                contact_info.append((geom1_name, geom2_name, distance))
-            
-            contact_hist.append(contact_info)
-                    
+
+            #if fsm.has_block_grasped == True and fsm.has_block_flipped == False:
+            if fsm.state == 'flip_block':
+                contact_info = [time]  
+                for j in range(data.ncon):
+                    geom1_name = model.geom(data.contact[j].geom1).name
+                    geom2_name = model.geom(data.contact[j].geom2).name
+                    distance = data.contact[j].dist
+                    pos = data.contact[j].pos
+                    contact_info.append((geom1_name, geom2_name, distance, pos))
+                
+                contact_hist.append(contact_info)
+                        
 
             block_position, block_orientation = get_block_pose(model, data, 'block_0')
             block_trans_velocity, block_ang_velocity = get_block_velocity(data)
@@ -108,7 +113,7 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
             # Initial Pose
             if state not in ['flip_block', 'move_back']:
                 current_position, _ = get_ee_pose(model, data)
-                state = fsm.reset_pose(model, data, current_position, clampness)
+                state = fsm.reset_pose(model, data, time, current_position)
                 if state == 'approach_block':
                     block_trans_vel_preflip_hist.append(block_trans_velocity.tolist())
             
@@ -120,8 +125,8 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                 block_ang_vel_hist.append(block_ang_velocity.tolist())
                 time_hist.append(time)
 
-                if fsm.has_gripper_opened == False:
-                    fsm.flip_block(model, data, time, ee_flip_target_velocity, clampness)
+                if fsm.has_block_flipped == False:
+                    fsm.flip_block(model, data, time, ee_flip_target_velocity)
                 else:
                     if fsm.state == 'post_flip_block':
                         fsm.move_back(model, data, time)
@@ -130,7 +135,7 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                                 renderer.take_screenshot(time)
                             screenshot_iteration += 1
                     else:
-                        fsm.flip_block(model, data, time, ee_flip_target_velocity, clampness)
+                        fsm.flip_block(model, data, time, ee_flip_target_velocity)
 
                     # To log the release state of the block
                     if trigger_iteration == 0:
@@ -205,8 +210,11 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
             block_position_hist=block_position_hist,
             block_ang_vel_hist=block_ang_vel_hist
             )
-            print("TRIGGERED PLOT")
             save_contacts_to_csv(sub_output_dir, contact_hist)
+            contacts_csv = pd.read_csv(f'{sub_output_dir}/contacts.csv')
+            print(contacts_csv.columns)
+            plot_contacts_data(sub_output_dir, contacts_csv)
+            
             plot_velocity_ee(sub_output_dir, release_time, time_hist, fsm.ee_vel_hist)        
             plot_velocity_comparison(sub_output_dir, release_time, time_hist, fsm.ee_vel_hist, block_trans_vel_hist)
             plot_joint_velocities(sub_output_dir, release_time, fsm.time_hist, fsm.joint_vel_hist, fsm.target_joint_vel_hist)

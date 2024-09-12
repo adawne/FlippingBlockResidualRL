@@ -37,7 +37,7 @@ def create_block_bodies(block_positions_orientations, block_mass, block_size,
             <joint name="block_joint" type="free" damping="0"></joint>
             <inertial pos="0 0 0" mass="{block_mass}" diaginertia="0.001 0.001 0.001" />
             <geom name="blue_subbox" size="{block_size[0]} {block_size[1]} {block_size[2]}" pos="0 0 0" type="box" rgba="0.3 0.5 0.8 1" 
-            solimp="0.99 0.995 0.0000001 0.5 2" solref="0.005 2" friction="5 0.01 0.001" />
+            solimp="0.99 0.995 0.0000001 0.5 2" solref="0.005 2" friction="5 0.3 0.001" />
         </body>
         '''
 

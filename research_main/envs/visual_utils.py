@@ -61,8 +61,8 @@ class SimulationRenderer:
                     self.cameras[mode].azimuth = 130
                     self.cameras[mode].elevation = -25
                 elif mode == 'video_block':
-                    self.cameras[mode].distance = 2.25
-                    self.cameras[mode].azimuth = 155
+                    self.cameras[mode].distance = 2
+                    self.cameras[mode].azimuth = 160
                     self.cameras[mode].elevation = -25
                 elif mode == 'video_front':
                     self.cameras[mode].distance = 3

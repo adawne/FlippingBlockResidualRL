@@ -26,8 +26,13 @@ class FiniteStateMachine:
         self.active_motors = ActuatorController(self.active_motors_list)
         self.active_motors.switch_to_position_controller(model)
 
-        self.has_gripper_opened = False
+        self.has_block_grasped = False
+        self.has_block_flipped = False
         self.passive_motor_angles_hold = None
+
+        self.blue_subbox_to_left_pad_contact = False
+        self.blue_subbox_to_right_pad_contact = False
+
         self.trigger_iteration = 0
 
         self.current_ee_pose =0
@@ -38,7 +43,7 @@ class FiniteStateMachine:
         self.ee_vel_hist = []
 
 
-    def reset_pose(self, model, data, current_position, clampness):
+    def reset_pose(self, model, data, time, current_position):
         self.has_block_released = False
 
         if self.state == 'initial_pose':
@@ -46,7 +51,7 @@ class FiniteStateMachine:
         elif self.state == 'approach_block':
             self._transition_to_approach_block(data, current_position)
         elif self.state == 'grasp_block':
-            self._transition_to_grasp_block(data, current_position, clampness)
+            self._transition_to_grasp_block(model, data, time, current_position)
         elif self.state == 'prep_flip_block':
             self._prepare_for_flip(model, data, current_position)
         elif self.state == 'final_prep_flip_block':
@@ -62,36 +67,56 @@ class FiniteStateMachine:
             
     def _initial_pose(self, model, data, current_position):
         self.move_to_next_state = False
-        self.target_position = [0.9, 0.2, 0.4]
+        self.target_position = [0.915, 0.2, 0.4]
         self.target_orientation = [np.pi / 2, -np.pi, 0]
 
         #print(np.linalg.norm(np.subtract(current_position, self.target_position)))
-        if np.linalg.norm(np.subtract(current_position, self.target_position)) < 0.02:
+        if np.linalg.norm(np.subtract(current_position, self.target_position)) < 0.025:
             self.move_to_next_state = True
             self.state = 'approach_block'
 
     def _transition_to_approach_block(self, data, current_position):
         self.move_to_next_state = False
-        self.target_position = [0.9, 0.2, 0.30]
+        self.target_position = [0.915, 0.2, 0.30]
         self.target_orientation = [np.pi / 2, -np.pi, 0]
 
-        if np.linalg.norm(np.subtract(current_position, self.target_position)) < 0.015:
+        #print(np.linalg.norm(np.subtract(current_position, self.target_position)))
+        if np.linalg.norm(np.subtract(current_position, self.target_position)) < 0.02:
             self.move_to_next_state = True
             self.state = 'grasp_block'
 
-    def _transition_to_grasp_block(self, data, current_position, clampness):
+    def _transition_to_grasp_block(self, model, data, time, current_position):
         self.move_to_next_state = False
         self.iteration += 1
-        gripper_close(data, clampness)
+        gripper_close(data)
 
-        if self.iteration > 500:
+        for j in range(data.ncon):
+            geom1_name = model.geom(data.contact[j].geom1).name
+            geom2_name = model.geom(data.contact[j].geom2).name
+            distance = data.contact[j].dist
+
+            if ((geom1_name == 'blue_subbox' and geom2_name == 'left_pad1') or
+                (geom1_name == 'left_pad1' and geom2_name == 'blue_subbox')):
+                if 0 >= distance >= -0.0005:
+                    self.blue_subbox_to_left_pad_contact = True
+
+            if ((geom1_name == 'blue_subbox' and geom2_name == 'right_pad1') or
+                (geom1_name == 'right_pad1' and geom2_name == 'blue_subbox')):
+                if 0 >= distance >= -0.0005:
+                    self.blue_subbox_to_right_pad_contact = True
+
+
+        if self.blue_subbox_to_left_pad_contact and self.blue_subbox_to_right_pad_contact:
+        #if self.iteration > 500:
+            self.grasping_time = time
+            self.has_block_grasped = True
             self.move_to_next_state = True
             self.iteration = 0
             self.state = 'prep_flip_block'
 
     def _prepare_for_flip(self, model, data, current_position):
         self.move_to_next_state = False
-        self.target_position = [0.9, 0.2, 0.34]
+        self.target_position = [0.915, 0.2, 0.34]
 
         if np.linalg.norm(np.subtract(current_position, self.target_position)) < 0.025:
             self.move_to_next_state = True
@@ -116,7 +141,7 @@ class FiniteStateMachine:
 
             self.state = 'flip_block'
 
-    def flip_block(self, model, data, time, ee_flip_target_velocity, clampness):
+    def flip_block(self, model, data, time, ee_flip_target_velocity):
         self.time_hist.append(time)
         
         joint_velocities = np.array(get_joint_velocities(data)).flatten()
@@ -127,29 +152,32 @@ class FiniteStateMachine:
         self.ee_velocity = get_ee_velocity(self.prev_ee_pose, self.current_ee_pose)
         self.ee_vel_hist.append(self.ee_velocity)
 
-        if self.has_gripper_opened == False:
-            gripper_close(data, clampness)
+        if self.has_block_flipped == False:
+            #gripper_close(data, clampness)
             target_trans_velocities = ee_flip_target_velocity
-            target_orientation = [0, -np.pi/2, 0]
-            target_joint_velocities = calculate_joint_velocities_partial(model, data, target_trans_velocities, target_orientation)
+            target_ang_velocities = [0, -np.pi, 0]
+            target_joint_velocities = calculate_joint_velocities_trans_partial(model, data, target_trans_velocities, target_ang_velocities)
+            #target_joint_velocities = calculate_joint_velocities_full(model, data, target_trans_velocities, target_ang_velocities)
             #print(target_joint_velocities)
             #print(self.ee_velocity)
             self.target_joint_vel_hist.append(target_joint_velocities.copy())
 
             block_position, block_orientation = get_block_pose(model, data, 'block_0')
 
-            shoulder_lift_vel_bias = 0
+            shoulder_lift_vel_bias = -0.125
             elbow_vel_bias = -0.075
             biased_target_joint_velocities = target_joint_velocities.copy()
             biased_target_joint_velocities[1] += shoulder_lift_vel_bias
             biased_target_joint_velocities[2] += elbow_vel_bias
             biased_target_joint_velocities[3] = -np.pi
-            #print(biased_target_joint_velocities)
             set_joint_states(data, self.active_motors_list, biased_target_joint_velocities)
 
+            
             if block_orientation[1] < -1.042:
+            #if get_specific_joint_angles(data, [self.wrist_1_id])[0]  > - 2.0944:
                 gripper_open(data)
-                self.has_gripper_opened = True
+                print("Release wrist 1 angle: ", get_specific_joint_angles(data, [self.wrist_1_id])[0])
+                self.has_block_flipped = True
                 self.release_time = time
                 self.release_ee_velocity = self.ee_velocity 
 

@@ -96,8 +96,8 @@ def wait(model, data, wait_time):
 def gripper_open(data):
     data.ctrl[6] = 0
 
-def gripper_close(data, clampness=225):
-    data.ctrl[6] = clampness
+def gripper_close(data):
+    data.ctrl[6] = 225
 
 def diffik(model, data, target_position, target_orientation_euler):
     target_orientation = R.from_euler('xyz', target_orientation_euler).as_quat()

@@ -36,18 +36,18 @@ def constraint_omega_lower(x):
     v_x0, v_y0, theta_0, h_release = x
     T = v_y0 / g + np.sqrt(2 * (h_release + (v_y0**2) / (2 * g)) / g)
     omega = (2 * np.pi - theta_0) / T
-    return omega + 10  
+    return omega + np.pi  
 
 def constraint_omega_upper(x):
     v_x0, v_y0, theta_0, h_release = x
     T = v_y0 / g + np.sqrt(2 * (h_release + (v_y0**2) / (2 * g)) / g)
     omega = (2 * np.pi - theta_0) / T
-    return 10 - omega  
+    return np.pi - omega  
 
 def generate_solution(I, m, a, b, lambdas):
     print(f"\nUsing dimensions and mass: a = {a:.3f}m, b = {b:.3f}m, mass = {m:.3f}kg, inertia = {I:.5f} kg·m²")
     
-    bnds = [(0.1, None), (0.1, None), (0, 2*np.pi/3), (0.46, None)]
+    bnds = [(0.1, None), (0.1, 2), (0, 2*np.pi/3), (0.46, None)]
     x0_list = [
         [5, 5, np.pi / 2, 1]
         #[1, 1, np.pi / 4, 0.5],

@@ -55,7 +55,7 @@ def create_cube_model(cube_name, center, coordinates):
 def xml_test():
     xml_string = \
         f'''<mujoco model="ur10e scene">
-        <include file="universal_robots_ur10e_2f85/ur10e_2f85.xml"/>
+        <include file="universal_robots_ur10e_2f85_example/ur10e_2f85.xml"/>
 
         <statistic center="0.4 0 0.4" extent="1"/>
         

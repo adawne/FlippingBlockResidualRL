@@ -20,12 +20,87 @@ def save_contacts_to_csv(output_dir, contact_hist):
         for record in contact_hist:
             time = record[0]
             contacts = record[1:]
-            contact_info_str = "; ".join([f"{geom1} - {geom2} (Distance: {dist:.4f})" 
-                                          for geom1, geom2, dist in contacts])
+            contact_info_str = "; ".join([f"{geom1} - {geom2} (Distance: {dist:.4f} - Pos: {pos})" 
+                                          for geom1, geom2, dist, pos in contacts])
             writer.writerow([time, contact_info_str])
 
+import re
+import pandas as pd
+import matplotlib.pyplot as plt
 
-def save_sim_stats(output_dir, masses, time_discrepancies, angle_discrepancies, height_discrepancies, landing_velocities_discrepancies, block_release_ver_velocities):
+def preprocess_contacts_data(df):
+    # Create an empty list to store the parsed data
+    parsed_data = []
+
+    # Regex pattern to extract contact information
+    pattern = re.compile(r'(?P<geom1>\w+) - (?P<geom2>\w+) \(Distance: (?P<distance>[-+]?[0-9]*\.?[0-9]+) - Pos: \[(?P<pos>[^\]]+)\]\)')
+
+    # Loop over each row and parse the contacts
+    for _, row in df.iterrows():
+        time = row['Time']
+        contacts_str = row['Contacts']
+        
+        # Find all matches for contacts
+        matches = pattern.findall(contacts_str)
+        
+        for match in matches:
+            geom1, geom2, distance, pos = match
+            distance = float(distance)
+            pos = [float(p) for p in pos.split()]
+            parsed_data.append([time, geom1, geom2, distance, pos])
+
+    # Create a DataFrame from the parsed data
+    parsed_df = pd.DataFrame(parsed_data, columns=['Time', 'Geom1', 'Geom2', 'Distance', 'Pos'])
+
+    # Split the position column into three separate columns for x, y, z
+    parsed_df[['Pos_X', 'Pos_Y', 'Pos_Z']] = pd.DataFrame(parsed_df['Pos'].tolist(), index=parsed_df.index)
+
+    # Drop the original Pos column as it's no longer needed
+    parsed_df.drop(columns=['Pos'], inplace=True)
+
+    return parsed_df
+
+def plot_contacts_data(output_dir, df):
+    df = preprocess_contacts_data(df)
+    
+    df['Contact_Order'] = df.groupby(['Time', 'Geom1', 'Geom2']).cumcount() + 1
+    df['Contact_Label'] = df['Geom1'] + ' - ' + df['Geom2'] + ' (' + df['Contact_Order'].astype(str) + ')'
+    
+    unique_contacts = df['Geom1'] + ' - ' + df['Geom2']
+    
+    for contact_pair in unique_contacts.unique():
+        contact_df = df[unique_contacts == contact_pair]
+        
+        fig, axs = plt.subplots(3, 1, figsize=(10, 12))
+        
+        for contact_label in contact_df['Contact_Label'].unique():
+            contact_data = contact_df[contact_df['Contact_Label'] == contact_label]
+            
+            # Plot X position
+            axs[0].plot(contact_data['Time'], contact_data['Pos_X'], label=f'{contact_label}')
+            axs[0].set_xlabel('Time')
+            axs[0].set_ylabel('Position X')
+            axs[0].legend()
+
+            # Plot Y position
+            axs[1].plot(contact_data['Time'], contact_data['Pos_Y'], label=f'{contact_label}')
+            axs[1].set_xlabel('Time')
+            axs[1].set_ylabel('Position Y')
+            axs[1].legend()
+
+            # Plot Z position
+            axs[2].plot(contact_data['Time'], contact_data['Pos_Z'], label=f'{contact_label}')
+            axs[2].set_xlabel('Time')
+            axs[2].set_ylabel('Position Z')
+            axs[2].legend()
+
+        contact_pair_cleaned = contact_pair.replace(' ', '_').replace('/', '_')
+        plt.tight_layout()
+        plt.savefig(f'{output_dir}/contact_position_plot_{contact_pair_cleaned}.png')
+        plt.close()
+
+def save_sim_stats(output_dir, masses, time_discrepancies, angle_discrepancies, height_discrepancies, 
+                   landing_velocities_discrepancies, block_release_ver_velocities):
     filename = f'{output_dir}/results.csv'
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
@@ -33,16 +108,18 @@ def save_sim_stats(output_dir, masses, time_discrepancies, angle_discrepancies, 
             'Mass', 'Time Discrepancy (%)', 'Angle Discrepancy X (%)', 'Angle Discrepancy Y (%)', 'Angle Discrepancy Z (%)', 
             'Height Discrepancy (%)','Landing Velocity Discrepancy (%)', 'Block Release Ver Velocity (m/s)'
         ])  
-        for mass, time_discrepancy, angle_discrepancy, height_discrepancy, landing_velocity_discrepancy, ver_velocity in zip(masses, time_discrepancies, angle_discrepancies, height_discrepancies, landing_velocities_discrepancies, block_release_ver_velocities):
+        for mass, time_discrepancy, angle_discrepancy, height_discrepancy, landing_velocity_discrepancy, ver_velocity in zip(masses, 
+        time_discrepancies, angle_discrepancies, height_discrepancies, landing_velocities_discrepancies, block_release_ver_velocities):
             writer.writerow([
                 mass, time_discrepancy, angle_discrepancy[0], angle_discrepancy[1], angle_discrepancy[2],  
                 height_discrepancy, landing_velocity_discrepancy, ver_velocity
             ])
 
 
-def save_iter_stats(output_dir, iteration, release_time, block_touch_ground_time, block_steady_state_time, ee_velocity, block_release_pos, block_release_orientation, 
-                    block_release_transvel, block_release_angvel, block_touch_ground_position, block_touch_ground_orientation, 
-                    block_steady_position, block_steady_orientation, block_position_hist):
+def save_iter_stats(output_dir, iteration, release_time, block_touch_ground_time, block_steady_state_time, ee_velocity, block_release_pos, 
+                    block_release_orientation, block_release_transvel, block_release_angvel, block_touch_ground_position, 
+                    block_touch_ground_orientation, block_steady_position, block_steady_orientation, 
+                    block_position_hist):
     
     time_in_air = block_touch_ground_time - release_time
     
@@ -272,8 +349,5 @@ def generate_simulation_parameters():
     print(f"Total number of combinations: {num_combinations}")
 
     return all_combinations
-
-if __name__ == "__main__":
-    generate_simulation_parameters()
 
 
