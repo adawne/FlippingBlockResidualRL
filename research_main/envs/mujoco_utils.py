@@ -47,9 +47,9 @@ def set_joint_states(data, actuator_ids, joint_angles):
 def get_ee_pose(model, data):
     end_effector_id = model.body('wrist_3_link').id
     end_effector_position = data.site('attachment_site').xpos
-    end_effector_orientation = data.body(end_effector_id).xquat
+    end_effector_orientation_matrix = data.body(end_effector_id).xmat.reshape(3, 3)
     
-    end_effector_orientation = R.from_quat(end_effector_orientation).as_euler('zyx')
+    end_effector_orientation = R.from_matrix(end_effector_orientation_matrix).as_euler('zyx')
     
     return end_effector_position, end_effector_orientation
 
@@ -57,19 +57,21 @@ def get_ee_velocity(model, data, local_frame=False):
     site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, 'pinch')
     
     velocity = np.zeros(6, dtype=np.float64)
-    
     mujoco.mj_objectVelocity(model, data, mujoco.mjtObj.mjOBJ_SITE, site_id, velocity, local_frame)
-    return velocity.reshape(2, 3)[::-1]  # [linear_velocity, angular_velocity]
+
+    return velocity.reshape(2, 3)[::-1]  
+
 
 
 def get_block_pose(model, data, block_name):
     block_id = data.body(block_name).id
-    #block_position = data.geom('blue_subbox').xpos
+    
     block_position = data.body(block_id).xpos
-    block_orientation = data.body(block_id).xquat
-    block_orientation = R.from_quat(block_orientation).as_euler('zyx')
+    block_orientation_matrix = data.body(block_id).xmat.reshape(3, 3)
+    block_orientation = R.from_matrix(block_orientation_matrix).as_euler('zyx')
     
     return block_position, block_orientation
+
 
 def get_block_velocity(data):
     block_translational_velocity = data.qvel[14:17]
