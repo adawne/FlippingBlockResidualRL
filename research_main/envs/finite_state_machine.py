@@ -149,7 +149,7 @@ class FiniteStateMachine:
         
         self.prev_ee_pose = self.current_ee_pose
         self.current_ee_pose = np.copy(get_ee_pose(model, data)[0])
-        self.ee_velocity = get_ee_velocity(self.prev_ee_pose, self.current_ee_pose)
+        self.ee_velocity = get_ee_velocity(model, data)[0]
         self.ee_vel_hist.append(self.ee_velocity)
 
         if self.has_block_flipped == False:
@@ -210,7 +210,7 @@ class FiniteStateMachine:
     def move_back(self, model, data, time):
         self.prev_ee_pose = self.current_ee_pose
         self.current_ee_pose = np.copy(get_ee_pose(model, data)[0])
-        self.ee_velocity = get_ee_velocity(self.prev_ee_pose, self.current_ee_pose)
+        self.ee_velocity = get_ee_velocity(model, data)[0]
         self.ee_vel_hist.append(self.ee_velocity)
         set_joint_states(data, self.active_motors_list, [np.pi])
 

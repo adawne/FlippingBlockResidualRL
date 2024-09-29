@@ -53,10 +53,14 @@ def get_ee_pose(model, data):
     
     return end_effector_position, end_effector_orientation
 
-def get_ee_velocity(prev_pos, current_pos):
-    end_effector_velocity = (current_pos - prev_pos)/0.002
+def get_ee_velocity(model, data, local_frame=False):
+    site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, 'pinch')
+    
+    velocity = np.zeros(6, dtype=np.float64)
+    
+    mujoco.mj_objectVelocity(model, data, mujoco.mjtObj.mjOBJ_SITE, site_id, velocity, local_frame)
+    return velocity.reshape(2, 3)[::-1]  # [linear_velocity, angular_velocity]
 
-    return end_effector_velocity
 
 def get_block_pose(model, data, block_name):
     block_id = data.body(block_name).id
