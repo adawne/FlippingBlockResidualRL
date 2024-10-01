@@ -67,7 +67,7 @@ class FiniteStateMachine:
             
     def _initial_pose(self, model, data, current_position):
         self.move_to_next_state = False
-        self.target_position = [0.915, 0.2, 0.4]
+        self.target_position = [0.9, 0.2, 0.4]
         self.target_orientation = [np.pi / 2, -np.pi, 0]
 
         #print(np.linalg.norm(np.subtract(current_position, self.target_position)))
@@ -77,7 +77,7 @@ class FiniteStateMachine:
 
     def _transition_to_approach_block(self, data, current_position):
         self.move_to_next_state = False
-        self.target_position = [0.915, 0.2, 0.30]
+        self.target_position = [0.9, 0.2, 0.30]
         self.target_orientation = [np.pi / 2, -np.pi, 0]
 
         #print(np.linalg.norm(np.subtract(current_position, self.target_position)))
@@ -116,7 +116,7 @@ class FiniteStateMachine:
 
     def _prepare_for_flip(self, model, data, current_position):
         self.move_to_next_state = False
-        self.target_position = [0.915, 0.2, 0.34]
+        self.target_position = [0.9, 0.2, 0.34]
 
         if np.linalg.norm(np.subtract(current_position, self.target_position)) < 0.025:
             self.move_to_next_state = True
@@ -124,6 +124,7 @@ class FiniteStateMachine:
 
     def _final_prepare_for_flip(self, model, data, current_position):
         self.move_to_next_state = False
+
         target_joint_angles = [-np.pi/2, -1.0763, 1.6462, -2*np.pi/3, -np.pi/2, 0]
         set_joint_states(data, self.active_motors_list, target_joint_angles)
 

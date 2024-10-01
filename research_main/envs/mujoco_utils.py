@@ -45,9 +45,9 @@ def set_joint_states(data, actuator_ids, joint_angles):
         data.ctrl[actuator_id] = joint_angles[i]
 
 def get_ee_pose(model, data):
-    end_effector_id = model.body('wrist_3_link').id
+    # TO DO: use pinch site
     end_effector_position = data.site('attachment_site').xpos
-    end_effector_orientation_matrix = data.body(end_effector_id).xmat.reshape(3, 3)
+    end_effector_orientation_matrix = data.site('attachment_site').xmat.reshape(3, 3)
     
     end_effector_orientation = R.from_matrix(end_effector_orientation_matrix).as_euler('zyx')
     
