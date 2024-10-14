@@ -1,5 +1,110 @@
+import os
+import cv2
+import mujoco
 import numpy as np
 from scipy.spatial.transform import Rotation as R
+
+
+class SimulationRenderer:
+    def __init__(self, model, data, output_dir, local_time, render_modes, contact_vis, framerate=60):
+        self.model = model
+        self.data = data
+        self.output_dir = output_dir
+        self.render_modes = render_modes or []
+        self.contact_vis = contact_vis
+        self.framerate = framerate
+        self.frames = {}
+        self.renderers = {}
+        self.cameras = {}
+        self.outs = {}
+
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+
+        for mode in self.render_modes:
+            self.cameras[mode] = mujoco.MjvCamera()
+            mujoco.mjv_defaultFreeCamera(self.model, self.cameras[mode])
+            
+            if mode == 'livecam':
+                self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
+            else:
+                self.renderers[mode] = mujoco.Renderer(self.model, height=1024, width=1440)
+                self.frames[mode] = []
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                self.outs[mode] = cv2.VideoWriter(os.path.join(self.output_dir, f'{mode}_{local_time}.mp4'), fourcc, self.framerate, (1440, 1024))
+
+        if self.contact_vis:
+            self.options = mujoco.MjvOption()
+            mujoco.mjv_defaultOption(self.options)
+            self.options.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = True
+            self.options.flags[mujoco.mjtVisFlag.mjVIS_CONTACTFORCE] = True
+            # tweak scales of contact visualization elements
+            self.model.vis.scale.contactwidth = 0.1
+            self.model.vis.scale.contactheight = 0.03
+            self.model.vis.scale.forcewidth = 0.05
+            self.model.vis.map.force = 0.3
+
+    def render_frame(self, time):
+        if 'livecam' in self.render_modes:
+            self.viewer.sync()
+        
+        for mode in self.render_modes:
+            if mode == 'livecam':
+                continue
+
+            if len(self.frames[mode]) < time * self.framerate:
+                if mode == 'video_top':
+                    self.cameras[mode].distance = 3.2
+                    self.cameras[mode].azimuth = 180
+                    self.cameras[mode].elevation = -50
+                elif mode == 'video_side':
+                    self.cameras[mode].distance = 3
+                    self.cameras[mode].azimuth = 130
+                    self.cameras[mode].elevation = -25
+                elif mode == 'video_block':
+                    self.cameras[mode].distance = 2
+                    self.cameras[mode].azimuth = 160
+                    self.cameras[mode].elevation = -25
+                elif mode == 'video_front':
+                    self.cameras[mode].distance = 3
+                    self.cameras[mode].azimuth = 180
+                    self.cameras[mode].elevation = -10
+
+                if self.contact_vis:
+                    self.renderers[mode].update_scene(self.data, self.cameras[mode], self.options)
+                else:
+                    self.renderers[mode].update_scene(self.data, self.cameras[mode])
+
+                pixels = self.renderers[mode].render()
+                self.frames[mode].append(pixels)
+                self.outs[mode].write(cv2.cvtColor(pixels, cv2.COLOR_RGB2BGR))
+
+    def take_screenshot(self, time_step, file_name='screenshot'):
+        for mode in self.render_modes:
+            if mode != 'livecam':
+                file_path = os.path.join(self.output_dir, f"{file_name}_{mode}_timestep_{time_step:.4f}.png")
+                if self.contact_vis:
+                    self.renderers[mode].update_scene(self.data, self.cameras[mode], self.options)
+                else:
+                    self.renderers[mode].update_scene(self.data, self.cameras[mode])
+                
+                pixels = self.renderers[mode].render()
+                cv2.imwrite(file_path, cv2.cvtColor(pixels, cv2.COLOR_RGB2BGR))
+                #print(f"Screenshot taken for {mode} at timestep {time_step:.4f} and saved to {file_path}")
+
+    def close(self):
+        if 'livecam' in self.render_modes:
+            self.viewer.close()
+        
+        for mode in self.render_modes:
+            if mode != 'livecam' and hasattr(self, 'outs') and self.outs[mode].isOpened():
+                self.outs[mode].release()
+            
+            if mode in self.frames:
+                self.frames[mode].clear()
+            
+            if mode in self.renderers:
+                del self.renderers[mode]
 
 def create_marker_body(marker_position):
     """

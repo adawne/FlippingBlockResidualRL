@@ -4,6 +4,8 @@ import json
 import csv
 import itertools
 import matplotlib.pyplot as plt
+import re
+import pandas as pd
 
 from scipy.spatial.transform import Rotation as R
 
@@ -12,21 +14,17 @@ def save_config(config, filename):
         json.dump(config, f, indent=4)
 
 def save_contacts_to_csv(output_dir, contact_hist):
-    filename = f'{output_dir}/contacts.csv'
+    # Assuming output_dir is the directory path, not a file path
+    filename = os.path.join(output_dir, 'contacts.csv')  
     with open(filename, 'w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(["Time", "Contacts"]) 
-        
         for record in contact_hist:
             time = record[0]
             contacts = record[1:]
             contact_info_str = "; ".join([f"{geom1} - {geom2} (Distance: {dist:.4f} - Pos: {pos})" 
                                           for geom1, geom2, dist, pos in contacts])
             writer.writerow([time, contact_info_str])
-
-import re
-import pandas as pd
-import matplotlib.pyplot as plt
 
 def preprocess_contacts_data(df):
     # Create an empty list to store the parsed data
@@ -215,7 +213,6 @@ def check_physical_assumptions(release_time, touch_ground_time, block_release_po
 
     return time_discrepancy_percentage, theta_final_discrepancy_percentage, height_discrepancy_percentage, landing_velocity_discrepancy_percentage
 
-
 def plot_discrepancy_vs_mass(output_dir, masses, time_discrepancies, angle_discrepancies, height_discrepancies, landing_velocities_discrepancies, block_release_ver_velocity):
     plt.figure(figsize=(8, 30)) 
 
@@ -285,7 +282,6 @@ def save_qpos_qvel(qpos, qvel, iteration=None):
 
 
 def generate_simulation_parameters():
-    # Define the ranges for each parameter, taking only the lowest and highest values
     block_mass = [0.1]  
     print(f"Number of block_mass combinations: {len(block_mass)}")
 
@@ -349,5 +345,215 @@ def generate_simulation_parameters():
     print(f"Total number of combinations: {num_combinations}")
 
     return all_combinations
+
+
+def plot_block_pose(output_dir, release_time, landing_time_pred, touch_ground_time, steady_time, time_hist, block_position_hist, block_orientation_hist, block_trans_vel_hist, block_ang_vel_hist):
+    # Process the data for plotting
+    block_position_hist = list(zip(*block_position_hist))  # Transpose to separate x, y, z components
+    block_orientation_hist = list(zip(*block_orientation_hist))  # Transpose to separate x, y, z components
+    block_trans_vel_hist = list(zip(*block_trans_vel_hist))  # Transpose to separate x, y, z components
+    block_ang_vel_hist = list(zip(*block_ang_vel_hist))  # Transpose to separate x, y, z components
+
+    plt.figure(figsize=(16, 12))
+
+    # Plotting block position history
+    plt.subplot(4, 1, 1)
+    plt.plot(time_hist, block_position_hist[0], label='X position')
+    plt.plot(time_hist, block_position_hist[1], label='Y position')
+    plt.plot(time_hist, block_position_hist[2], label='Z position')
+    # Add vertical lines
+    plt.axvline(x=release_time, color='g', linestyle='--', label='Release time')
+    plt.axvline(x=landing_time_pred, color='r', linestyle='--', label='Predicted landing time')
+    plt.axvline(x=touch_ground_time, color='b', linestyle='--', label='Touch ground time')
+    plt.axvline(x=steady_time, color='orange', linestyle='--', label='Steady state time')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Position (m)')
+    plt.title('Block Position History')
+    plt.legend()
+
+    # Plotting block orientation history
+    plt.subplot(4, 1, 2)
+    plt.plot(time_hist, block_orientation_hist[0], label='X orientation')
+    plt.plot(time_hist, block_orientation_hist[1], label='Y orientation')
+    plt.plot(time_hist, block_orientation_hist[2], label='Z orientation')
+    # Add vertical lines
+    plt.axvline(x=release_time, color='g', linestyle='--', label='Release time')
+    plt.axvline(x=landing_time_pred, color='r', linestyle='--', label='Predicted landing time')
+    plt.axvline(x=touch_ground_time, color='b', linestyle='--', label='Touch ground time')
+    plt.axvline(x=steady_time, color='orange', linestyle='--', label='Steady state time')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Orientation')
+    plt.title('Block Orientation History')
+    plt.legend()
+
+    # Plotting translational velocity qvel[14:17]
+    plt.subplot(4, 1, 3)
+    plt.plot(time_hist, block_trans_vel_hist[0], label='Vx')
+    plt.plot(time_hist, block_trans_vel_hist[1], label='Vy')
+    plt.plot(time_hist, block_trans_vel_hist[2], label='Vz')
+    # Add vertical lines
+    plt.axvline(x=release_time, color='g', linestyle='--', label='Release time')
+    plt.axvline(x=landing_time_pred, color='r', linestyle='--', label='Predicted landing time')
+    plt.axvline(x=touch_ground_time, color='b', linestyle='--', label='Touch ground time')
+    plt.axvline(x=steady_time, color='orange', linestyle='--', label='Steady state time')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Velocity (m/s)')
+    plt.title('Translational Velocity qvel[14:17]')
+    plt.legend()
+
+    # Plotting angular velocity qvel[17:20]
+    plt.subplot(4, 1, 4)
+    plt.plot(time_hist, block_ang_vel_hist[0], label='Omega x')
+    plt.plot(time_hist, block_ang_vel_hist[1], label='Omega y')
+    plt.plot(time_hist, block_ang_vel_hist[2], label='Omega z')
+    # Add vertical lines
+    plt.axvline(x=release_time, color='g', linestyle='--', label='Release time')
+    plt.axvline(x=landing_time_pred, color='r', linestyle='--', label='Predicted landing time')
+    plt.axvline(x=touch_ground_time, color='b', linestyle='--', label='Touch ground time')
+    plt.axvline(x=steady_time, color='orange', linestyle='--', label='Steady state time')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Angular Velocity (rad/s)')
+    plt.title('Angular Velocity qvel[17:20]')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'block_flying_poses.png'))
+
+def plot_joint_velocities(output_dir, release_time, time_hist, joint_vel_hist, target_joint_vel_hist):
+    joint_vel_hist_np = np.array(joint_vel_hist)
+    target_joint_vel_hist_np = np.array(target_joint_vel_hist)
+    time_hist_np = np.array(time_hist)
+
+    joint_names = ['Shoulder Pan', 'Shoulder Lift', 'Elbow', 'Wrist 1', 'Wrist 2', 'Wrist 3']
+
+    fig, axs = plt.subplots(6, 1, figsize=(10, 15))  # 6 rows, 1 column of subplots
+
+    for i in range(joint_vel_hist_np.shape[1]):
+        axs[i].plot(time_hist_np, joint_vel_hist_np[:, i], label=f'Real {joint_names[i]} Velocity')
+        axs[i].plot(time_hist_np, target_joint_vel_hist_np[:, i], linestyle='--', label=f'Target {joint_names[i]} Velocity')
+        
+        # Plot the vertical line at release time
+        axs[i].axvline(x=release_time, color='r', linestyle=':', label='Release Time')
+
+        axs[i].set_xlabel('Time (s)')
+        axs[i].set_ylabel('Velocity (rad/s)')
+        axs[i].set_title(f'{joint_names[i]} Velocity Over Time')
+        axs[i].legend()
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'joint_velocities_subplot.png'))
+
+def plot_velocity_ee(output_dir, release_time, time_hist, end_effector_vel_hist):
+    time_hist_np = np.array(time_hist[1:])
+    end_effector_vel_hist_np = np.array(end_effector_vel_hist[1:])  # Shape: (num_samples-1, 3)
+
+    velocity_components = ['X', 'Y', 'Z']
+
+    fig, axs = plt.subplots(3, 1, figsize=(8, 12))  # 3 rows, 1 column of subplots (one for each axis)
+
+    for i in range(3):
+        axs[i].plot(time_hist_np, end_effector_vel_hist_np[:, i], label=f'End Effector {velocity_components[i]} Velocity')
+        
+        axs[i].axvline(x=release_time, color='r', linestyle=':', label='Release Time')
+
+        axs[i].set_xlabel('Time (s)')
+        axs[i].set_ylabel('Velocity (m/s)')
+        axs[i].set_title(f'{velocity_components[i]} Velocity Over Time')
+        axs[i].legend()
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'end_effector_velocity.png'))
+
+def plot_velocity_comparison(output_dir, release_time, time_hist, end_effector_vel_hist, block_vel_hist):
+    # Ignore the first element of each list
+    time_hist_np = np.array(time_hist[1:])
+    end_effector_vel_hist_np = np.array(end_effector_vel_hist[1:])  # Shape: (num_samples-1, 3)
+    block_vel_hist_np = np.array(block_vel_hist[1:])  # Shape: (num_samples-1, 3)
+
+    velocity_components = ['X', 'Y', 'Z']
+
+    fig, axs = plt.subplots(3, 2, figsize=(12, 15))  # 3 rows, 2 columns of subplots (position and discrepancy for each axis)
+
+    for i in range(3):
+        axs[i, 0].plot(time_hist_np, end_effector_vel_hist_np[:, i], label=f'End Effector {velocity_components[i]} Velocity')
+        axs[i, 0].plot(time_hist_np, block_vel_hist_np[:, i], linestyle='--', label=f'Block {velocity_components[i]} Velocity')
+        
+        axs[i, 0].axvline(x=release_time, color='r', linestyle=':', label='Release Time')
+
+        axs[i, 0].set_xlabel('Time (s)')
+        axs[i, 0].set_ylabel('Velocity (m/s)')
+        axs[i, 0].set_title(f'{velocity_components[i]} Velocity Over Time')
+        axs[i, 0].legend()
+
+        velocity_discrepancy = end_effector_vel_hist_np[:, i] - block_vel_hist_np[:, i]
+        axs[i, 1].plot(time_hist_np, velocity_discrepancy, color='purple', label=f'{velocity_components[i]} Velocity Discrepancy')
+        
+        axs[i, 1].axvline(x=release_time, color='r', linestyle=':', label='Release Time')
+
+        axs[i, 1].set_xlabel('Time (s)')
+        axs[i, 1].set_ylabel('Discrepancy (m/s)')
+        axs[i, 1].set_title(f'{velocity_components[i]} Velocity Discrepancy (End Effector - Block)')
+        axs[i, 1].legend()
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'end_effector_block_velocity_comparison.png'))
+
+def plot_discrepancy_vs_mass(output_dir, masses, time_discrepancies, angle_discrepancies, height_discrepancies, landing_velocities_discrepancies, block_release_ver_velocity):
+    plt.figure(figsize=(8, 30))  # Increased the figure size to accommodate the extra subplot
+
+    # Plot Time Discrepancy
+    plt.subplot(5, 1, 1)
+    plt.plot(masses, time_discrepancies, 'o-', color='blue', label='Time Discrepancy')
+    plt.xlabel('Block Mass (kg)')
+    plt.ylabel('Time Discrepancy (%)')
+    plt.title('Mass vs Time Discrepancy')
+    plt.grid(True)
+    plt.legend()
+
+    # Plot Angle Discrepancy
+    plt.subplot(5, 1, 2)
+    angle_discrepancies = np.array(angle_discrepancies)
+    plt.plot(masses, angle_discrepancies[:, 0], 'o-', color='red', label='Angle Discrepancy X')
+    plt.plot(masses, angle_discrepancies[:, 1], 'o-', color='green', label='Angle Discrepancy Y')
+    plt.plot(masses, angle_discrepancies[:, 2], 'o-', color='orange', label='Angle Discrepancy Z')
+    plt.xlabel('Block Mass (kg)')
+    plt.ylabel('Angle Discrepancy (%)')
+    plt.title('Mass vs Angle Discrepancy')
+    plt.grid(True)
+    plt.legend()
+
+    # Plot Block Release Vertical Velocity
+    plt.subplot(5, 1, 3)
+    plt.plot(masses, block_release_ver_velocity, 'o-', color='purple', label='Block Release Vertical Velocity')
+    plt.xlabel('Block Mass (kg)')
+    plt.ylabel('Vertical Velocity (m/s)')
+    plt.title('Mass vs Block Release Vertical Velocity')
+    plt.grid(True)
+    plt.legend()
+
+    # Plot Height Discrepancy
+    plt.subplot(5, 1, 4)
+    plt.plot(masses, height_discrepancies, 'o-', color='brown', label='Height Discrepancy')
+    plt.xlabel('Block Mass (kg)')
+    plt.ylabel('Height Discrepancy (%)')
+    plt.title('Mass vs Height Discrepancy')
+    plt.grid(True)
+    plt.legend()
+
+    # Plot Landing Velocity Discrepancy
+    plt.subplot(5, 1, 5)
+    plt.plot(masses, landing_velocities_discrepancies, 'o-', color='cyan', label='Landing Velocity Discrepancy')
+    plt.xlabel('Block Mass (kg)')
+    plt.ylabel('Landing Velocity Discrepancy (%)')
+    plt.title('Mass vs Landing Velocity Discrepancy')
+    plt.grid(True)
+    plt.legend()
+
+    plt.tight_layout()
+    
+    filename = os.path.join(output_dir, 'discrepancy_vs_mass.png')
+    plt.savefig(filename)
+    plt.close()
+
 
 

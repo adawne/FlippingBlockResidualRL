@@ -62,7 +62,6 @@ def get_ee_velocity(model, data, local_frame=False):
     return velocity.reshape(2, 3)[::-1]  
 
 
-
 def get_block_pose(model, data, block_name):
     block_id = data.body(block_name).id
     
