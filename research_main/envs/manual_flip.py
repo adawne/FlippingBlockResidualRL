@@ -97,7 +97,6 @@ def plot_and_save_results(sub_output_dir, iteration, release_time, time_hist, fs
                     block_release_pos, block_release_orientation, block_release_transvel, block_release_angvel, 
                     block_touch_ground_position, block_touch_ground_orientation, block_steady_position, 
                     block_steady_orientation, block_position_hist)
-    print("TRIGGGERED")
 
 def plot_and_save_contacts(sub_output_dir, contact_hist):
     contacts_csv_path = os.path.join(sub_output_dir, 'contacts.csv')  # This ensures a correct file path
@@ -175,7 +174,7 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
         model = mujoco.MjModel.from_xml_string(world_xml_model)
         data = mujoco.MjData(model)
         contact = mujoco.MjContact()
-        mujoco.mj_kinematics(model, data)
+        mujoco.mj_resetDataKeyframe(model, data, 0)
         fsm = FiniteStateMachine(model)
         if use_random_parameters is not True:
             renderer = SimulationRenderer(model, data, output_dir=sub_output_dir, local_time=formatted_time, render_modes=render_modes, contact_vis=contact_vis)
@@ -197,6 +196,7 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
 
 
         while has_block_steady == False and data.time < 8:
+            print(fsm.state)
             time = data.time
             mujoco.mj_step(model, data)
             if use_random_parameters is not True:

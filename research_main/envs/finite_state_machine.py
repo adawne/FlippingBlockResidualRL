@@ -33,8 +33,12 @@ class FiniteStateMachine:
         self.blue_subbox_to_right_pad_contact = False
 
         self.trigger_iteration = 0
+        self.current_ee_pose = 0
+        self.mpc_timestep = 0
 
-        self.current_ee_pose =0
+        self.time_log = []
+        self.qpos_log = []
+        self.qvel_log = []
 
         self.time_hist = []
         self.joint_vel_hist = []
@@ -166,9 +170,12 @@ class FiniteStateMachine:
                                     active_ids=[self.shoulder_pan_id, self.shoulder_lift_id, self.elbow_id, self.wrist_1_id, self.wrist_2_id, self.wrist_3_id],
                                     passive_ids=[],
                                     mode="velocity")
-
-
             self.state = 'flip_block'
+            # with open("flip_data_log.txt", "a") as file:
+            #     file.write(f"Qpos: {data.qpos.tolist()}\n")
+            #     file.write(f"Ctrl: {data.ctrl.tolist()}\n")
+            #     file.write("\n")  # Add a blank line for readability
+
 
     def flip_block(self, model, data, time, ee_flip_target_velocity):
         self.time_hist.append(time)
@@ -180,6 +187,12 @@ class FiniteStateMachine:
         self.current_ee_pose = np.copy(get_ee_pose(model, data)[0])
         self.ee_velocity = get_ee_velocity(model, data)[0]
         self.ee_vel_hist.append(self.ee_velocity)
+
+
+        #print(get_joint_angles(data))
+        self.time_log.append(data.time)
+        self.qpos_log.append(get_joint_angles(data))
+        self.qvel_log.append(get_joint_velocities(data))
 
         if self.has_block_flipped == False:
             #gripper_close(data, clampness)
@@ -210,7 +223,8 @@ class FiniteStateMachine:
                 self.update_motors_controller(model,
                                         active_ids=[],
                                         passive_ids=[self.shoulder_pan_id, self.shoulder_lift_id, self.elbow_id, self.wrist_1_id, self.wrist_2_id, self.wrist_3_id],
-                                        mode="position")
+                                        mode="position"
+                                        )
                 self.passive_motor_angles_hold = get_specific_joint_angles(data, self.passive_motors_list)       
     
 
@@ -221,7 +235,7 @@ class FiniteStateMachine:
             set_joint_states(data, self.passive_motors_list, self.passive_motor_angles_hold)
 
             if self.trigger_iteration > 50:
-                #self.state = 'post_flip_block'
+                self.state = 'post_flip_block'
                 self.trigger_iteration = 0
                 self.update_motors_controller(model,
                                         active_ids=[self.wrist_1_id],
@@ -229,6 +243,63 @@ class FiniteStateMachine:
                                         mode="position")
 
                 self.passive_motor_angles_hold = get_specific_joint_angles(data, self.passive_motors_list)           
+                #self.save_trajectory_to_csv_and_plot()
+
+    def flip_block_mpc(self, model, data, time, ee_flip_target_velocity):
+        joint_velocities = np.array(get_joint_velocities(data)).flatten()
+        self.joint_vel_hist.append(joint_velocities)
+        
+        self.ee_velocity = get_ee_velocity(model, data)[0]
+        self.ee_vel_hist.append(self.ee_velocity)
+
+        if self.has_block_flipped == False:
+            self.preload_mpc_trajectory('precomputed_mpc_traj/interpolated_trajectory.csv')
+            target_joint_velocities = self.qvel_data[self.mpc_timestep, :6]
+            
+            self.target_joint_vel_hist.append(target_joint_velocities.copy())
+
+            block_position, block_orientation = get_block_pose(model, data, 'block_0')
+
+            #shoulder_lift_vel_bias = -0.125
+            #elbow_vel_bias = -0.075
+            biased_target_joint_velocities = target_joint_velocities.copy()
+            #biased_target_joint_velocities[1] += shoulder_lift_vel_bias
+            #biased_target_joint_velocities[2] += elbow_vel_bias
+            #biased_target_joint_velocities[3] = -np.pi
+            set_joint_states(data, self.active_motors_list, biased_target_joint_velocities)
+            self.mpc_timestep += 1
+            
+            if block_orientation[1] < -1.042:
+            #if get_specific_joint_angles(data, [self.wrist_1_id])[0]  > - 2.0944:
+                gripper_open(data)
+                print("Release wrist 1 angle: ", get_specific_joint_angles(data, [self.wrist_1_id])[0])
+                self.has_block_flipped = True
+                self.release_time = time
+                self.release_ee_velocity = self.ee_velocity 
+
+                self.update_motors_controller(model,
+                                        active_ids=[],
+                                        passive_ids=[self.shoulder_pan_id, self.shoulder_lift_id, self.elbow_id, self.wrist_1_id, self.wrist_2_id, self.wrist_3_id],
+                                        mode="position")
+                self.passive_motor_angles_hold = get_specific_joint_angles(data, self.passive_motors_list)       
+        
+        # Counting time steps after the block released
+        else:
+            self.target_joint_vel_hist.append(np.zeros((6)))
+
+            self.trigger_iteration += 1
+            set_joint_states(data, self.passive_motors_list, self.passive_motor_angles_hold)
+
+            if self.trigger_iteration > 50:
+                self.state = 'post_flip_block'
+                self.trigger_iteration = 0
+                self.update_motors_controller(model,
+                                        active_ids=[self.wrist_1_id],
+                                        passive_ids=[self.shoulder_pan_id, self.shoulder_lift_id, self.elbow_id, self.wrist_2_id, self.wrist_3_id],
+                                        mode="position")
+
+                self.passive_motor_angles_hold = get_specific_joint_angles(data, self.passive_motors_list)
+
 
     def move_back(self, model, data, time):
         self.prev_ee_pose = self.current_ee_pose
@@ -237,3 +308,62 @@ class FiniteStateMachine:
         self.ee_vel_hist.append(self.ee_velocity)
         set_joint_states(data, self.active_motors_list, [np.pi])
 
+
+    def save_trajectory_to_csv_and_plot(self):
+        with open('precomputed_mpc_traj/hard_coded_trajectory.csv', 'w', newline='') as csvfile:
+            log_writer = csv.writer(csvfile)
+            # Write header
+            log_writer.writerow(['Time', 'QPos', 'QVel'])
+            
+            # Prepare data for plotting
+            time_data = []
+            qpos_data = []
+            qvel_data = []
+            
+            # Write trajectory data and store for plotting
+            for i in range(len(self.time_log)):
+                qpos_str = ','.join(map(str, self.qpos_log[i]))
+                qvel_str = ','.join(map(str, self.qvel_log[i]))
+                log_writer.writerow([self.time_log[i], qpos_str, qvel_str])
+                
+                time_data.append(self.time_log[i])
+                qpos_data.append(self.qpos_log[i])  # Assuming qpos_log is a list of lists
+                qvel_data.append(self.qvel_log[i])  # Assuming qvel_log is a list of lists
+
+        print("Trajectory saved to 'flip_block_trajectory.csv'")
+
+        # Convert qpos_data and qvel_data from lists of lists into a format that can be plotted
+        qpos_data = list(zip(*qpos_data))  # Transpose the data to get separate lists for each qpos component
+        qvel_data = list(zip(*qvel_data))  # Same for qvel
+        
+        # Plot the qpos data
+        plt.figure()
+        for j in range(len(qpos_data)):
+            plt.plot(time_data, qpos_data[j], label=f'QPos {j}')
+        plt.title('QPos Trajectory')
+        plt.xlabel('Time')
+        plt.ylabel('QPos')
+        plt.legend()
+        plt.savefig('qpos_trajectory.png')  # Save the plot as a PNG file
+        plt.close()  # Close the plot to avoid displaying it
+        
+        # Plot the qvel data
+        plt.figure()
+        for j in range(len(qvel_data)):
+            plt.plot(time_data, qvel_data[j], label=f'QVel {j}')
+        plt.title('QVel Trajectory')
+        plt.xlabel('Time')
+        plt.ylabel('QVel')
+        plt.legend()
+        plt.savefig('qvel_trajectory.png')  # Save the plot as a PNG file
+        plt.close()  # Close the plot to avoid displaying it
+
+    def preload_mpc_trajectory(self, csv_file):
+        # Preload qvel data (MPC trajectory) from the CSV file
+        self.qvel_data = []
+        with open(csv_file, 'r') as csvfile:
+            reader = csv.DictReader(csvfile)  # Use DictReader to get columns by header name
+            for row in reader:
+                qvel_row = [float(x.strip()) for x in row['QPos'].split(',')]
+                self.qvel_data.append(qvel_row)
+        self.qvel_data = np.array(self.qvel_data)
