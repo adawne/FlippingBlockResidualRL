@@ -290,7 +290,6 @@ def save_iter_stats(output_dir, iteration, release_time, block_touch_ground_time
 def check_physical_assumptions(release_time, touch_ground_time, block_release_pos, block_release_transvel, block_release_quat, 
                                 block_touch_ground_height, block_touch_ground_quat, block_touch_ground_velocity, time_hist, 
                                 block_position_hist, block_ang_vel_hist, g=9.81):
-    
     block_release_ver_velocity = block_release_transvel[2]
 
     block_heights = [pos[2] for pos in block_position_hist] 

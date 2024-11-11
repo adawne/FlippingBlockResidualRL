@@ -85,8 +85,9 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
             if fsm.state == 'flip_block':
                 contact_hist.append(analyze_contacts(data, model, fsm, time))
 
-            block_position, block_orientation = get_block_pose(model, data, 'block_0')
-            block_trans_velocity, block_ang_velocity = get_block_velocity(data)
+            block_position, block_orientation = get_block_pose(model, data, quat=True)
+            block_trans_velocity = data.sensor('block_linvel').data.copy()
+            block_ang_velocity = data.sensor('block_angvel').data.copy()
             #time_hist.append(time)
                 
 
@@ -168,6 +169,7 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                             
                             closest_index = np.argmin(np.abs(np.array(time_hist) - touch_ground_time))
                             block_touch_ground_position = block_position_hist[closest_index]
+                            block_touch_ground_height = block_touch_ground_position[2]
                             block_touch_ground_orientation = block_orientation_hist[closest_index]
                             block_touch_ground_velocity = block_trans_velocity
                             
@@ -187,46 +189,34 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                             
                             trigger_iteration += 1
 
-#==============================================================================
-        # qpos_differences = np.array(qpos_differences)
-
-        # # Plotting the differences for each of the first 6 joints
-        # fig, axs = plt.subplots(2, 3, figsize=(15, 10))
-        # for i in range(6):
-        #     row = i // 3
-        #     col = i % 3
-        #     axs[row, col].plot(qpos_differences[:, i], label=f'Joint {i+1}')
-        #     axs[row, col].set_title(f'Difference for Joint {i+1}')
-        #     axs[row, col].set_xlabel('Timestep')
-        #     axs[row, col].set_ylabel('Difference')
-        #     axs[row, col].legend()
-
-        # plt.tight_layout()
-        # plt.savefig('qpos_differences_updated.png')
-        # plt.show()
-
-
-#==============================================================================
-        if use_random_parameters is not True and render_modes != ["livecam"]:
+        if use_random_parameters is not True:
+        #if use_random_parameters is not True and render_modes != ["livecam"]:
             log_simulation_results(i, release_time, fsm, block_release_pos, block_release_orientation, 
                                    block_release_transvel, block_release_angvel, touch_ground_time, 
                                    block_touch_ground_position, block_touch_ground_orientation)
 
 
-            #plot_and_save_contacts(sub_output_dir, contact_hist)
-            plot_and_save_results(sub_output_dir, i, release_time, time_hist, fsm, block_trans_vel_hist, landing_time_pred, 
-                                touch_ground_time, steady_time, block_position_hist, block_orientation_hist, 
-                                block_ang_vel_hist, block_release_pos, block_release_orientation, block_release_transvel, 
-                                block_release_angvel, block_touch_ground_position, block_touch_ground_orientation,
-                                block_steady_position, block_steady_orientation)
+            # #plot_and_save_contacts(sub_output_dir, contact_hist)
+            # plot_and_save_results(sub_output_dir, i, release_time, time_hist, fsm, block_trans_vel_hist, landing_time_pred, 
+            #                     touch_ground_time, steady_time, block_position_hist, block_orientation_hist, 
+            #                     block_ang_vel_hist, block_release_pos, block_release_orientation, block_release_transvel, 
+            #                     block_release_angvel, block_touch_ground_position, block_touch_ground_orientation,
+            #                     block_steady_position, block_steady_orientation)
 
 
-            time_discrepancy_percentage, angle_discrepancy_percentage, height_discrepancy_percentage, landing_velocity_discrepancy_percentage = perform_discrepancy_analysis(release_time, touch_ground_time, block_release_pos, 
-                                                                                                                                                                            block_release_transvel, block_release_orientation,
-                                                                                                                                                                            block_touch_ground_position, block_touch_ground_orientation, 
-                                                                                                                                                                            block_touch_ground_velocity, time_hist, 
-                                                                                                                                                                            block_position_hist, block_ang_vel_hist)
- 
+            time_discrepancy_percentage, angle_discrepancy_percentage, height_discrepancy_percentage, landing_velocity_discrepancy_percentage = perform_discrepancy_analysis(
+                release_time=release_time, 
+                touch_ground_time=touch_ground_time, 
+                block_release_pos=block_release_pos, 
+                block_release_transvel=block_release_transvel, 
+                block_touch_ground_height=block_touch_ground_height,
+                block_release_quat=block_release_orientation,  
+                block_touch_ground_quat=block_touch_ground_orientation, 
+                block_touch_ground_velocity=block_touch_ground_velocity, 
+                time_hist=time_hist, 
+                block_position_hist=block_position_hist, 
+                block_ang_vel_hist=block_ang_vel_hist
+            )
             masses.append(block_mass)
             time_discrepancies.append(time_discrepancy_percentage)
             angle_discrepancies.append(angle_discrepancy_percentage)
