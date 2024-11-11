@@ -37,7 +37,10 @@ def objective_with_regularization(x, I, m):
 def constraint_theta_final(x):
     v_x0, v_y0, theta_0, omega, h_0 = x
     T_ascent = v_y0 / g
-    T_descent = np.sqrt(2 * (h_0 + (v_y0**2 / (2 * g))) / g)
+    
+    descent_first_term = v_y0**2 / g**2
+    descent_second_term = 2 * h_0 / g
+    T_descent = np.sqrt(descent_first_term + descent_second_term)
     T = T_ascent + T_descent
     return np.pi - (theta_0 + omega * T)
 
@@ -48,7 +51,7 @@ def constraint_omega_limit(x):
 
 # Bounds for the optimization variables
 bnds = [
-    (0, None),              # v_x0 >= 0
+    (0.1, None),              # v_x0 >= 0.1
     (0, 2),              # v_y0 >= 0
     (0, 2 * np.pi / 3),     # 0 <= theta_0 <= 2*pi/3
     (0, 4.45),              # 0 <= omega <= 4.45

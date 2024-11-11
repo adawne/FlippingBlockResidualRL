@@ -21,7 +21,7 @@ def log_simulation_results(release_time, block_release_pos, block_release_orient
 
 def plot_block_data(times, block_orientations_quat, desired_orientations_quat, block_orientations_euler, 
                     xfrc_applied_data, qfrc_applied_data, block_positions, block_trans_vels, block_ang_vels, 
-                    flipped_time=None):
+                    flipped_time=None, touch_ground_time=None):
 
     block_orientations_quat = np.array(block_orientations_quat)
     desired_orientations_quat = np.array(desired_orientations_quat)
@@ -42,6 +42,9 @@ def plot_block_data(times, block_orientations_quat, desired_orientations_quat, b
     axs1[0].grid(True)
     if flipped_time is not None:
         axs1[0].axvline(x=flipped_time, color='r', linestyle='--', label="Flipped Time")
+    if touch_ground_time is not None:
+        axs1[0].axvline(x=touch_ground_time, color='g', linestyle='--', label="Touch Ground Time")
+
     
     # Block Positions
     axs1[1].plot(times, block_positions[:, 0], label="Pos x", color='blue')
@@ -51,8 +54,10 @@ def plot_block_data(times, block_orientations_quat, desired_orientations_quat, b
     axs1[1].legend()
     axs1[1].grid(True)
     if flipped_time is not None:
-        axs1[1].axvline(x=flipped_time, color='r', linestyle='--')
-    
+        axs1[1].axvline(x=flipped_time, color='r', linestyle='--', label="Flipped Time")
+    if touch_ground_time is not None:
+        axs1[1].axvline(x=touch_ground_time, color='g', linestyle='--', label="Touch Ground Time")
+
     # Block Translational Velocities
     axs1[2].plot(times, block_trans_vels[:, 0], label="Trans Vel x", color='cyan')
     axs1[2].plot(times, block_trans_vels[:, 1], label="Trans Vel y", color='magenta')
@@ -61,8 +66,10 @@ def plot_block_data(times, block_orientations_quat, desired_orientations_quat, b
     axs1[2].legend()
     axs1[2].grid(True)
     if flipped_time is not None:
-        axs1[2].axvline(x=flipped_time, color='r', linestyle='--')
-    
+        axs1[2].axvline(x=flipped_time, color='r', linestyle='--', label="Flipped Time")
+    if touch_ground_time is not None:
+        axs1[2].axvline(x=touch_ground_time, color='g', linestyle='--', label="Touch Ground Time")
+
     # Block Orientation (Euler Angles)
     axs1[3].plot(times, block_orientations_euler[:, 0], label="Euler z (Yaw)", color='purple')
     axs1[3].plot(times, block_orientations_euler[:, 1], label="Euler y (Pitch)", color='teal')
@@ -72,7 +79,9 @@ def plot_block_data(times, block_orientations_quat, desired_orientations_quat, b
     axs1[3].legend()
     axs1[3].grid(True)
     if flipped_time is not None:
-        axs1[3].axvline(x=flipped_time, color='r', linestyle='--')
+        axs1[3].axvline(x=flipped_time, color='r', linestyle='--', label="Flipped Time")
+    if touch_ground_time is not None:
+        axs1[3].axvline(x=touch_ground_time, color='g', linestyle='--', label="Touch Ground Time")
     
     fig1.suptitle("Block Angular Velocities, Positions, Translational Velocities, and Euler Angles Over Time")
     plt.tight_layout(rect=[0, 0.03, 1, 0.97])
@@ -86,7 +95,9 @@ def plot_block_data(times, block_orientations_quat, desired_orientations_quat, b
     axs2[0].legend()
     axs2[0].grid(True)
     if flipped_time is not None:
-        axs2[0].axvline(x=flipped_time, color='r', linestyle='--')
+        axs2[0].axvline(x=flipped_time, color='r', linestyle='--', label="Flipped Time")
+    if touch_ground_time is not None:
+        axs2[0].axvline(x=touch_ground_time, color='g', linestyle='--', label="Touch Ground Time")
     
     axs2[1].plot(times, block_orientations_quat[:, 1], label="Block Quaternion y", color='orange')
     axs2[1].plot(times, desired_orientations_quat[:, 1], '--', label="Desired Quaternion y", color='orange')
@@ -94,7 +105,9 @@ def plot_block_data(times, block_orientations_quat, desired_orientations_quat, b
     axs2[1].legend()
     axs2[1].grid(True)
     if flipped_time is not None:
-        axs2[1].axvline(x=flipped_time, color='r', linestyle='--')
+        axs2[1].axvline(x=flipped_time, color='r', linestyle='--', label="Flipped Time")
+    if touch_ground_time is not None:
+        axs2[1].axvline(x=touch_ground_time, color='g', linestyle='--', label="Touch Ground Time")
     
     axs2[2].plot(times, block_orientations_quat[:, 2], label="Block Quaternion z", color='g')
     axs2[2].plot(times, desired_orientations_quat[:, 2], '--', label="Desired Quaternion z", color='g')
@@ -102,7 +115,9 @@ def plot_block_data(times, block_orientations_quat, desired_orientations_quat, b
     axs2[2].legend()
     axs2[2].grid(True)
     if flipped_time is not None:
-        axs2[2].axvline(x=flipped_time, color='r', linestyle='--')
+        axs2[2].axvline(x=flipped_time, color='r', linestyle='--', label="Flipped Time")
+    if touch_ground_time is not None:
+        axs2[2].axvline(x=touch_ground_time, color='g', linestyle='--', label="Touch Ground Time")
     
     axs2[3].plot(times, block_orientations_quat[:, 3], label="Block Quaternion w", color='r')
     axs2[3].plot(times, desired_orientations_quat[:, 3], '--', label="Desired Quaternion w", color='r')
@@ -111,7 +126,9 @@ def plot_block_data(times, block_orientations_quat, desired_orientations_quat, b
     axs2[3].legend()
     axs2[3].grid(True)
     if flipped_time is not None:
-        axs2[3].axvline(x=flipped_time, color='r', linestyle='--')
+        axs2[3].axvline(x=flipped_time, color='r', linestyle='--', label="Flipped Time")
+    if touch_ground_time is not None:
+        axs2[3].axvline(x=touch_ground_time, color='g', linestyle='--', label="Touch Ground Time")    
     
     fig2.suptitle("Block Orientation (Quaternion Components) Over Time")
     plt.tight_layout(rect=[0, 0.03, 1, 0.97])
@@ -124,7 +141,9 @@ def plot_block_data(times, block_orientations_quat, desired_orientations_quat, b
     axs3[0].legend(["x", "y", "z", "rx", "ry", "rz"])
     axs3[0].grid(True)
     if flipped_time is not None:
-        axs3[0].axvline(x=flipped_time, color='r', linestyle='--')
+        axs3[0].axvline(x=flipped_time, color='r', linestyle='--', label="Flipped Time")
+    if touch_ground_time is not None:
+        axs3[0].axvline(x=touch_ground_time, color='g', linestyle='--', label="Touch Ground Time")
     
     axs3[1].plot(times, np.array(qfrc_applied_data))
     axs3[1].set_xlabel("Time (s)")
@@ -132,7 +151,9 @@ def plot_block_data(times, block_orientations_quat, desired_orientations_quat, b
     axs3[1].legend([f"q_{i}" for i in range(14, 20)])
     axs3[1].grid(True)
     if flipped_time is not None:
-        axs3[1].axvline(x=flipped_time, color='r', linestyle='--')
+        axs3[1].axvline(x=flipped_time, color='r', linestyle='--', label="Flipped Time")
+    if touch_ground_time is not None:
+        axs3[1].axvline(x=touch_ground_time, color='g', linestyle='--', label="Touch Ground Time")
     
     fig3.suptitle("Applied Forces Over Time")
     plt.tight_layout(rect=[0, 0.03, 1, 0.97])

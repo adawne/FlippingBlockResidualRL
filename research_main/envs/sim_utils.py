@@ -320,7 +320,6 @@ def check_physical_assumptions(release_time, touch_ground_time, block_release_po
     landing_velocity_discrepancy = np.abs(landing_velocity_exp - landing_velocity_theory)
     landing_velocity_discrepancy_percentage = (landing_velocity_discrepancy / landing_velocity_theory) * 100
 
-    # Find in-air indices
     in_air_indices = [i for i, t in enumerate(time_hist) if release_time <= t <= touch_ground_time]
 
     if in_air_indices:
@@ -348,9 +347,9 @@ def check_physical_assumptions(release_time, touch_ground_time, block_release_po
     theta_final_discrepancy_percentage = (np.abs(theta_final_discrepancy_degrees) / 360.0) * 100.0
 
 
-    print("-" * 91)
+    print("=" * 91)
     print("Testing Physical Assumptions")
-    print("-" * 91)
+    print("=" * 91)
     print(f"Time in the air (experimental): {time_in_air_exp:.4f} s")
     print(f"Time in the air (theoretical): {time_in_air_theory:.4f} s")
     print(f"Discrepancy in time: {time_discrepancy:.4f} s ({time_discrepancy_percentage:.2f}%)")

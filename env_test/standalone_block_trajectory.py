@@ -89,8 +89,9 @@ def main(render_modes):
 
         else:
             make_block_float(model, data)
-            desired_trans_velocity = 0.0111
-            desired_ang_velocity = -10.9150
+            v_x_desired = 0.1
+            v_y_desired = 0.0111
+            omega_y_desired = -3.8
 
             if block_orientation_euler[1] > -60:
                 if prev_orientation_y is not None and block_orientation_euler[1] > prev_orientation_y:
@@ -108,16 +109,17 @@ def main(render_modes):
                         
                         renderer.take_screenshot(time)
                         trigger_iteration += 1
-                        print("Triggered")
 
-            if block_trans_velocity[2] < desired_trans_velocity:
+            if block_trans_velocity[0] < v_x_desired:
+                data.xfrc_applied[block_body_id][0] = 0.02
+
+            if block_trans_velocity[2] < v_y_desired:
                 data.xfrc_applied[block_body_id][2] = 0.01
                 #data.qfrc_applied[16] = 0.01
 
-            if block_ang_velocity[1] > desired_ang_velocity:
+            if block_ang_velocity[1] > omega_y_desired:
                 data.xfrc_applied[block_body_id][4] = -0.02
                 #data.qfrc_applied[18] = 0.01
-
 
         times.append(time)
         block_orientations_quat.append(block_orientation)
@@ -131,12 +133,12 @@ def main(render_modes):
         
         prev_orientation_y = block_orientation_euler[1]
 
-    # log_simulation_results(flipped_time, block_release_pos, block_release_orientation, 
-    #                         block_release_transvel, block_release_angvel, touch_ground_time, 
-    #                         block_touch_ground_position, block_touch_ground_orientation)
-    # plot_block_data(times, block_orientations_quat, desired_orientations_quat, block_orientations_euler, 
-    #                     xfrc_applied_data, qfrc_applied_data, block_positions, block_trans_vels, block_ang_vels, 
-    #                     flipped_time)
+    log_simulation_results(flipped_time, block_release_pos, block_release_euler, 
+                            block_release_transvel, block_release_angvel, touch_ground_time, 
+                            block_touch_ground_position, block_touch_ground_euler)
+    plot_block_data(times, block_orientations_quat, desired_orientations_quat, block_orientations_euler, 
+                    xfrc_applied_data, qfrc_applied_data, block_positions, block_trans_vels, block_ang_vels, 
+                    flipped_time, touch_ground_time)
 
 
     time_discrepancy_percentage, angle_discrepancy_percentage, height_discrepancy_percentage, landing_velocity_discrepancy_percentage = perform_discrepancy_analysis(
