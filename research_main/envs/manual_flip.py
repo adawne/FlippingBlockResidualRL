@@ -70,7 +70,9 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
         save_csv_iteration = 0
         debug_iteration = 0
 
+        print(model.geom(0).name, model.geom(58).name, model.geom(55).name, model.geom(42).name)
         while has_block_steady == False and data.time < 8:
+            #print(data.contact.geom1, data.contact.geom2)
             time = data.time
             mujoco.mj_step(model, data)
                 
@@ -107,30 +109,23 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                 block_ang_vel_hist.append(block_ang_velocity.tolist())
                 time_hist.append(time)
 
-                # FLipping block
-                # if fsm.has_block_flipped == False and fsm.mpc_timestep <= len(fsm.mpc_ctrl_log):
-                #     fsm.flip_block_mpc(model, data, time)
-                #     if fsm.mpc_timestep > 0:
-                #         joint_angles = get_joint_angles(data).copy()
-                #         mpc_joint_hist.append(joint_angles)
-
-                # elif fsm.has_block_flipped and save_csv_iteration == 0:
-                #     with open('mpc_state_log_new.csv', 'w', newline='') as csvfile:
-                #         log_writer = csv.writer(csvfile)
-                #         log_writer.writerow(['Joint_1', 'Joint_2', 'Joint_3', 'Joint_4', 'Joint_5', 'Joint_6'])
-                #         for joint_history in mpc_joint_hist:
-                #             log_writer.writerow(joint_history)
-
-                #         print("MPC state log saved to 'mpc_state_log_new.csv'")
-                #     save_csv_iteration += 1
-
-                if fsm.has_block_flipped == False:
+                if fsm.has_gripper_opened == False:
                     fsm.flip_block(model, data, time, ee_flip_target_velocity)
                     # fsm.flip_block_mpc(model, data, time)
 #===========================================================================================================
 
                 # After flipping block
                 else:
+                    if has_block_released(data) and trigger_iteration == 0:
+                        release_time = time
+                        block_release_pos, block_release_orientation = get_block_pose(model, data, quat=True)
+                        _, block_release_euler = get_block_pose(model, data)
+                        block_release_transvel = data.sensor('block_linvel').data.copy()
+                        block_release_angvel = data.sensor('block_angvel').data.copy()
+
+                        print(release_time)
+                            
+                        trigger_iteration += 1 
                     # Moving back
                     if fsm.state == 'post_flip_block':
                         fsm.move_back(model, data, time)
@@ -145,24 +140,14 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                         #fsm.flip_block_mpc(model, data, time)
 
                     # To log the release state of the block
-                    if trigger_iteration == 0:
-                        release_time = np.copy(time)
-                        block_release_pos = np.copy(block_position)
-                        block_release_orientation = np.copy(block_orientation)
-
-                        block_release_transvel = np.copy(block_trans_velocity)
-                        block_release_angvel = np.copy(block_ang_velocity)
-
-                        block_release_ver_velocity = block_release_transvel[2]
-                        time_flight_prediction = 2 * block_release_ver_velocity / 9.81
-                        landing_time_pred = release_time + time_flight_prediction
+                    if trigger_iteration == 1:
                         if use_random_parameters is not True:
                             renderer.take_screenshot(time)
                         trigger_iteration += 1
 
                     # To log the state of the block when touch the floor for the first time
                     if has_block_landed(data) == True:
-                        if trigger_iteration == 1:
+                        if trigger_iteration == 2:
                             touch_ground_time = np.copy(time)
                             if use_random_parameters is not True:
                                 renderer.take_screenshot(time)
@@ -177,7 +162,7 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
 
                     # To log the state of the block when already landed steadily
                     if np.linalg.norm(block_trans_velocity) < 0.001 and np.linalg.norm(block_ang_velocity) < 0.001:
-                        if trigger_iteration == 2:
+                        if trigger_iteration == 3:
                             has_block_steady = True
                             steady_time = np.copy(time)
                             if use_random_parameters is not True:
@@ -190,19 +175,18 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                             trigger_iteration += 1
 
         if use_random_parameters is not True:
-        #if use_random_parameters is not True and render_modes != ["livecam"]:
-            log_simulation_results(i, release_time, fsm, block_release_pos, block_release_orientation, 
-                                   block_release_transvel, block_release_angvel, touch_ground_time, 
-                                   block_touch_ground_position, block_touch_ground_orientation)
-
-
-            # #plot_and_save_contacts(sub_output_dir, contact_hist)
-            # plot_and_save_results(sub_output_dir, i, release_time, time_hist, fsm, block_trans_vel_hist, landing_time_pred, 
-            #                     touch_ground_time, steady_time, block_position_hist, block_orientation_hist, 
-            #                     block_ang_vel_hist, block_release_pos, block_release_orientation, block_release_transvel, 
-            #                     block_release_angvel, block_touch_ground_position, block_touch_ground_orientation,
-            #                     block_steady_position, block_steady_orientation)
-
+            log_simulation_results(
+                i=i,
+                release_time=release_time,
+                release_ee_velocity=fsm.release_ee_velocity,
+                block_release_pos=block_release_pos,
+                block_release_orientation=block_release_euler,
+                block_release_transvel=block_release_transvel,
+                block_release_angvel=block_release_angvel,
+                touch_ground_time=touch_ground_time,
+                block_touch_ground_position=block_touch_ground_position,
+                block_touch_ground_orientation=block_touch_ground_orientation
+            )
 
             time_discrepancy_percentage, angle_discrepancy_percentage, height_discrepancy_percentage, landing_velocity_discrepancy_percentage = perform_discrepancy_analysis(
                 release_time=release_time, 
@@ -217,19 +201,28 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                 block_position_hist=block_position_hist, 
                 block_ang_vel_hist=block_ang_vel_hist
             )
+
+
+            # #plot_and_save_contacts(sub_output_dir, contact_hist)
+            # plot_and_save_results(sub_output_dir, i, release_time, time_hist, fsm, block_trans_vel_hist, landing_time_pred, 
+            #                     touch_ground_time, steady_time, block_position_hist, block_orientation_hist, 
+            #                     block_ang_vel_hist, block_release_pos, block_release_orientation, block_release_transvel, 
+            #                     block_release_angvel, block_touch_ground_position, block_touch_ground_orientation,
+            #                     block_steady_position, block_steady_orientation)
+
             masses.append(block_mass)
             time_discrepancies.append(time_discrepancy_percentage)
             angle_discrepancies.append(angle_discrepancy_percentage)
             height_discrepancies.append(height_discrepancy_percentage)
             landing_velocities_discrepancies.append(landing_velocity_discrepancy_percentage)
-            block_release_ver_velocities.append(block_release_ver_velocity)
+            block_release_ver_velocities.append(fsm.block_release_transvel[2])
 
             renderer.close()
 
         if has_block_steady:
             print("Position when the block landed steadily: ", block_steady_position) 
             print("Orientation when the block landed steadily: ", block_steady_orientation)
-            iteration_result = {"current_config": current_config, "block_release_transvel": block_release_transvel.tolist(), 
+            iteration_result = {"current_config": current_config, "block_release_transvel": fsm.block_release_transvel.tolist(), 
                     "fsm_release_ee_velocity": fsm.release_ee_velocity.tolist(), "has_block_steady": has_block_steady}
             return iteration_result
             

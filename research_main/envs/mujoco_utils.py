@@ -93,7 +93,7 @@ def get_ee_velocity(model, data, local_frame=False):
 def get_block_pose(model, data, block_name='block_0', quat=False):
     block_id = data.body(block_name).id
     
-    block_position = data.body(block_id).xpos
+    block_position = data.body(block_id).xpos.copy()
 
     if not quat:
         block_orientation_matrix = data.body(block_id).xmat.reshape(3, 3)
@@ -284,6 +284,24 @@ def detect_block_contact(data):
             contacts.append([geom1_id, geom2_id])
 
     return contacts
+
+def has_block_released(data):
+    blue_subbox_id = data.geom("blue_subbox").id
+    right_pad1_id = data.geom("right_pad1").id
+    right_pad2_id = data.geom("right_pad2").id
+    left_pad1_id = data.geom("left_pad1").id
+    left_pad2_id = data.geom("left_pad2").id
+
+    for i in range(data.ncon):
+        contact = data.contact[i]
+        geom1_id = contact.geom1
+        geom2_id = contact.geom2
+
+        if (geom1_id in {blue_subbox_id, right_pad1_id, right_pad2_id, left_pad1_id, left_pad2_id} or
+            geom2_id in {blue_subbox_id, right_pad1_id, right_pad2_id, left_pad1_id, left_pad2_id}):
+            return False  
+
+    return True  
 
 def has_hit_robot(data, block_contact_hist):
     """

@@ -135,13 +135,13 @@ def plot_and_save_contacts(sub_output_dir, contact_hist):
 
 
 
-def log_simulation_results(i, release_time, fsm, block_release_pos, block_release_orientation, 
+def log_simulation_results(i, release_time, release_ee_velocity, block_release_pos, block_release_orientation, 
                            block_release_transvel, block_release_angvel, touch_ground_time, 
                            block_touch_ground_position, block_touch_ground_orientation):
     print("="*91)
     print(f"Iteration: {i}")
     print(f"Block release time: {release_time}")
-    print(f"Release EE velocity: {fsm.release_ee_velocity}")
+    print(f"Release EE velocity: {release_ee_velocity}")
     print(f"Block release position: {block_release_pos}")
     print(f"Block release orientation: {block_release_orientation}")
     print(f"Block translational release velocity: {block_release_transvel}")
@@ -290,6 +290,7 @@ def save_iter_stats(output_dir, iteration, release_time, block_touch_ground_time
 def check_physical_assumptions(release_time, touch_ground_time, block_release_pos, block_release_transvel, block_release_quat, 
                                 block_touch_ground_height, block_touch_ground_quat, block_touch_ground_velocity, time_hist, 
                                 block_position_hist, block_ang_vel_hist, g=9.81):
+
     block_release_ver_velocity = block_release_transvel[2]
 
     block_heights = [pos[2] for pos in block_position_hist] 

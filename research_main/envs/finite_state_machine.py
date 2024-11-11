@@ -26,7 +26,7 @@ class FiniteStateMachine:
         self.active_motors.switch_to_position_controller(model)
 
         self.has_block_grasped = False
-        self.has_block_flipped = False
+        self.has_gripper_opened = False
         self.passive_motor_angles_hold = None
 
         self.blue_subbox_to_left_pad_contact = False
@@ -202,7 +202,7 @@ class FiniteStateMachine:
         joint_velocities = np.array(get_joint_velocities(data)).flatten()
         self.joint_vel_hist.append(joint_velocities)
         
-        ee_velocity = get_ee_velocity(model, data)[0]
+        ee_velocity = data.sensor('pinch_linvel').data.copy()
         self.ee_vel_hist.append(ee_velocity)
 
         #print(get_joint_angles(data))
@@ -210,7 +210,7 @@ class FiniteStateMachine:
         # self.qpos_log.append(get_joint_angles(data))
         # self.qvel_log.append(get_joint_velocities(data))
 
-        if self.has_block_flipped == False:
+        if self.has_gripper_opened == False:
             #gripper_close(data, clampness)
             target_trans_velocities = ee_flip_target_velocity
             target_ang_velocities = [0, -np.pi, 0]
@@ -231,8 +231,7 @@ class FiniteStateMachine:
             if block_orientation[1] < -1.042:
             #if get_specific_joint_angles(data, [self.wrist_1_id])[0]  > - 2.0944:
                 gripper_open(data)
-                print("Release wrist 1 angle: ", get_specific_joint_angles(data, [self.wrist_1_id])[0])
-                self.has_block_flipped = True
+                self.has_gripper_opened = True
                 self.release_time = time
                 self.release_ee_velocity = ee_velocity 
 
@@ -242,7 +241,7 @@ class FiniteStateMachine:
                                         mode="position"
                                         )
                 self.passive_motor_angles_hold = get_specific_joint_angles(data, self.passive_motors_list)       
-    
+                
 
         else:
             self.target_joint_vel_hist.append(np.zeros((6)))
@@ -266,7 +265,7 @@ class FiniteStateMachine:
         ee_velocity = get_ee_velocity(model, data)[0]
         wrist_1_angle = get_specific_joint_angles(data, [self.wrist_1_id])[0]
         
-        if self.has_block_flipped == False:
+        if self.has_gripper_opened == False:
             if wrist_1_angle > -4.1544:
                 #print(self.mpc_timestep)
                 given_ctrl = self.mpc_ctrl_log[self.mpc_timestep]
@@ -276,7 +275,7 @@ class FiniteStateMachine:
             else:
                 gripper_open(data)
                 print("Release wrist 1 angle: ", wrist_1_angle)
-                self.has_block_flipped = True
+                self.has_gripper_opened = True
                 self.release_time = time
                 self.release_ee_velocity = ee_velocity 
                 self.motor_angles_hold = get_specific_joint_angles(data, self.active_motors_list)

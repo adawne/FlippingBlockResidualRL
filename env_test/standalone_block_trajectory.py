@@ -89,9 +89,15 @@ def main(render_modes):
 
         else:
             make_block_float(model, data)
-            v_x_desired = 0.1
-            v_y_desired = 0.0111
-            omega_y_desired = -3.8
+            # v_x_desired = 0.1
+            # v_z_desired = 0.0299
+            # omega_x_desired = 0
+            # omega_y_desired = -3.8758
+
+            v_x_desired = 0.3346
+            v_z_desired = 2.01
+            omega_x_desired = 0
+            omega_y_desired = -4.2
 
             if block_orientation_euler[1] > -60:
                 if prev_orientation_y is not None and block_orientation_euler[1] > prev_orientation_y:
@@ -113,7 +119,7 @@ def main(render_modes):
             if block_trans_velocity[0] < v_x_desired:
                 data.xfrc_applied[block_body_id][0] = 0.02
 
-            if block_trans_velocity[2] < v_y_desired:
+            if block_trans_velocity[2] < v_z_desired:
                 data.xfrc_applied[block_body_id][2] = 0.01
                 #data.qfrc_applied[16] = 0.01
 
