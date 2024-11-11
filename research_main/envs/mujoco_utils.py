@@ -1,6 +1,7 @@
 import numpy as np
 import mujoco
 import os
+import csv
 
 from scipy.spatial.transform import Rotation as R
 
@@ -35,6 +36,17 @@ class ActuatorController:
             model.actuator(actuator_id).gainprm[:3] = self.gain
             model.actuator(actuator_id).biasprm[:3] = self.bias
 
+    def print_actuator_parameters(self, model):
+        for actuator_id in self.actuator_ids:
+            dyn_params = model.actuator(actuator_id).dynprm[:3]
+            gain_params = model.actuator(actuator_id).gainprm[:3]
+            bias_params = model.actuator(actuator_id).biasprm[:3]
+
+            print(f"Actuator ID: {actuator_id}")
+            print(f"  Dyn Parameters: {dyn_params}")
+            print(f"  Gain Parameters: {gain_params}")
+            print(f"  Bias Parameters: {bias_params}")
+            print("-----------------------------------")
 
 def move_ee_to_point(model, data, target_position, target_orientation):
     joint_angles_target = diffik(model, data, target_position, target_orientation)
@@ -43,6 +55,22 @@ def move_ee_to_point(model, data, target_position, target_orientation):
 def set_joint_states(data, actuator_ids, joint_angles):
     for i, actuator_id in enumerate(actuator_ids):
         data.ctrl[actuator_id] = joint_angles[i]
+
+def execute_mpc_trajectory(trajectory_file, data, index):
+    qpos_log = []
+
+    with open(trajectory_file, 'r') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            qpos_values = [float(x) for x in row['QPos'].split(',')]  
+            qpos_log.append(qpos_values[:6])  # Only the first 6 qpos values
+
+    # Convert qpos_log to a numpy array for easier indexing
+    if index < len(qpos_log):
+        qpos_log = np.array(qpos_log)
+        mpc_qpos = qpos_log[index]
+        data.qpos[:6] = mpc_qpos
+
 
 def get_ee_pose(model, data):
     # TO DO: use pinch site
@@ -62,13 +90,17 @@ def get_ee_velocity(model, data, local_frame=False):
     return velocity.reshape(2, 3)[::-1]  
 
 
-def get_block_pose(model, data, block_name):
+def get_block_pose(model, data, block_name='block_0', quat=False):
     block_id = data.body(block_name).id
     
     block_position = data.body(block_id).xpos
-    block_orientation_matrix = data.body(block_id).xmat.reshape(3, 3)
-    block_orientation = R.from_matrix(block_orientation_matrix).as_euler('zyx')
-    
+
+    if not quat:
+        block_orientation_matrix = data.body(block_id).xmat.reshape(3, 3)
+        block_orientation = R.from_matrix(block_orientation_matrix).as_euler('zyx')
+    else:
+        block_orientation = data.body(block_id).xquat.copy()
+
     return block_position, block_orientation
 
 
@@ -119,13 +151,14 @@ def diffik(model, data, target_position, target_orientation_euler):
     gravity_compensation: bool = True
 
     # Simulation timestep in seconds.
-    dt: float = 0.002
+    #dt: float = 0.002
+    dt: float = model.opt.timestep
 
     # Maximum allowable joint velocity in rad/s. Set to 0 to disable.
     max_angvel = 0.0
 
     # Override the simulation timestep.
-    model.opt.timestep = dt
+    #model.opt.timestep = dt
 
     # Name of bodies we wish to apply gravity compensation to.
     body_names = [
@@ -214,7 +247,7 @@ def has_rotated(orientation_history):
 
     return total_rotation_angle >= 360
 
-def has_block_landed(data, block_position):
+def has_block_landed(data):
     floor_id = data.geom("floor").id
     block_id = data.geom("blue_subbox").id
 

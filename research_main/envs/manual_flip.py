@@ -1,11 +1,8 @@
 import os
 import time
 import numpy as np
-import pandas as pd
 import mujoco
 import mujoco.viewer
-import mediapy as media
-import cv2
 import argparse
 
 import matplotlib.pyplot as plt
@@ -15,131 +12,6 @@ from sim_utils import *
 from mujoco_utils import *
 from scene_builder import *
 from finite_state_machine import *
-
-def create_directories_and_save_config(i, block_mass, formatted_time, render_modes, config):
-    output_dir = f'outputs/{formatted_time}_{render_modes}'
-    sub_output_dir = f'outputs/{formatted_time}_{render_modes}/{i}_{block_mass:.3f}'
-    
-    os.makedirs(output_dir, exist_ok=True)
-    os.makedirs(sub_output_dir, exist_ok=True)
-    
-    config_filename = os.path.join(sub_output_dir, 'config.json')
-    save_config(config, config_filename)
-    
-    return output_dir, sub_output_dir
-
-def build_config(i, render_modes, contact_vis, random_mass, block_mass, block_size, ee_flip_target_velocity, 
-                 sim_description, block_solimp, block_solref, block_friction, cone, noslip_iterations, 
-                 noslip_tolerance, impratio, pad_friction, pad_solimp, pad_solref, clampness, use_random_parameters):
-    config = {
-        'iteration': i,
-        'render_modes': render_modes,
-        'contact_vis': contact_vis,
-        'random_mass': random_mass,
-        'block_mass': block_mass,
-        'block_size': block_size,
-        'ee_flip_target_velocity': ee_flip_target_velocity,
-        'sim_description': sim_description,
-        'block_solimp': block_solimp,
-        'block_solref': block_solref,
-        'block_friction': block_friction,
-        'cone': cone,
-        'noslip_iterations': noslip_iterations,
-        'noslip_tolerance': noslip_tolerance,
-        'impratio': impratio,
-        'pad_friction': pad_friction,
-        'pad_solimp': pad_solimp,
-        'pad_solref': pad_solref,
-        'clampness': clampness,
-        'use_random_parameters': use_random_parameters
-    }
-
-    return config
-
-def analyze_contacts(data, model, fsm, time):
-    contact_info = [time]  
-    for j in range(data.ncon):
-        geom1_name = model.geom(data.contact[j].geom1).name
-        geom2_name = model.geom(data.contact[j].geom2).name
-        distance = data.contact[j].dist
-        pos = data.contact[j].pos
-        contact_info.append((geom1_name, geom2_name, distance, pos))
-    return contact_info
-
-def perform_discrepancy_analysis(release_time, touch_ground_time, block_release_pos, block_release_transvel, 
-                                 block_release_orientation, block_touch_ground_orientation, block_touch_ground_velocity, 
-                                 time_hist, block_position_hist, block_ang_vel_hist):
-    return check_physical_assumptions(
-        release_time=release_time, 
-        touch_ground_time=touch_ground_time,
-        block_release_pos=block_release_pos, 
-        block_release_transvel=block_release_transvel, 
-        block_release_orientation=block_release_orientation, 
-        block_touch_ground_orientation=block_touch_ground_orientation,
-        block_touch_ground_velocity=block_touch_ground_velocity,
-        time_hist=time_hist,
-        block_position_hist=block_position_hist,
-        block_ang_vel_hist=block_ang_vel_hist
-    )
-
-def plot_and_save_results(sub_output_dir, iteration, release_time, time_hist, fsm, block_trans_vel_hist, landing_time_pred, 
-                          touch_ground_time, steady_time, block_position_hist, block_orientation_hist, 
-                          block_ang_vel_hist, block_release_pos, block_release_orientation, block_release_transvel, 
-                          block_release_angvel, block_touch_ground_position, block_touch_ground_orientation, 
-                          block_steady_position, block_steady_orientation):
-    plot_velocity_ee(sub_output_dir, release_time, time_hist, fsm.ee_vel_hist)
-    plot_velocity_comparison(sub_output_dir, release_time, time_hist, fsm.ee_vel_hist, block_trans_vel_hist)
-    plot_joint_velocities(sub_output_dir, release_time, fsm.time_hist, fsm.joint_vel_hist, fsm.target_joint_vel_hist)
-    plot_block_pose(sub_output_dir, release_time, landing_time_pred, touch_ground_time, steady_time, time_hist, 
-                    block_position_hist, block_orientation_hist, block_trans_vel_hist, block_ang_vel_hist)
-    
-    save_iter_stats(sub_output_dir, iteration, release_time, touch_ground_time, steady_time, fsm.release_ee_velocity, 
-                    block_release_pos, block_release_orientation, block_release_transvel, block_release_angvel, 
-                    block_touch_ground_position, block_touch_ground_orientation, block_steady_position, 
-                    block_steady_orientation, block_position_hist)
-
-def plot_and_save_contacts(sub_output_dir, contact_hist):
-    contacts_csv_path = os.path.join(sub_output_dir, 'contacts.csv')  # This ensures a correct file path
-    print(f"Saving contacts to {contacts_csv_path}")
-    
-    # Ensure the directory exists
-    os.makedirs(sub_output_dir, exist_ok=True)
-    
-    # Check if contact_hist is empty
-    if not contact_hist:
-        print("Warning: contact_hist is empty, no contacts to save.")
-        return
-
-    # Save contacts to CSV
-    try:
-        save_contacts_to_csv(sub_output_dir, contact_hist)  # Pass only the directory here
-        print(f"Contacts saved successfully to {contacts_csv_path}")
-        
-        # Load and plot contacts
-        contacts_csv = pd.read_csv(contacts_csv_path)
-        plot_contacts_data(sub_output_dir, contacts_csv)
-        
-    except Exception as e:
-        print(f"Error while saving contacts: {e}")
-
-
-
-def log_simulation_results(i, release_time, fsm, block_release_pos, block_release_orientation, 
-                           block_release_transvel, block_release_angvel, touch_ground_time, 
-                           block_touch_ground_position, block_touch_ground_orientation):
-    print("="*91)
-    print(f"Iteration: {i}")
-    print(f"Block release time: {release_time}")
-    print(f"Release EE velocity: {fsm.release_ee_velocity}")
-    print(f"Block release position: {block_release_pos}")
-    print(f"Block release orientation: {block_release_orientation}")
-    print(f"Block translational release velocity: {block_release_transvel}")
-    print(f"Block angular release velocity: {block_release_angvel}")
-    print("-"*91)
-    print(f"Block touch the ground time: {touch_ground_time}")
-    print(f"Position when the block touched the ground: {block_touch_ground_position}")
-    print(f"Orientation when the block touched the ground: {block_touch_ground_orientation}")
-
 
 
 def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_size, ee_flip_target_velocity, sim_description, 
@@ -155,10 +27,9 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
     formatted_time = local_time.strftime('%Y-%m-%d_%H-%M')
 
     for i in range(iteration):
-
         if random_mass: 
-            block_mass = round(np.random.uniform(0.050, 0.400), 3)
-        block_positions_orientations = [([0.9, 0.2, 0], [0, 0, 0])] 
+            block_mass = round(np.random.uniform(0.050, 0.400),  3)
+        block_positions_orientations = [([0.2, 0.2, 0], [0, 0, 0])] 
         args.block_mass = block_mass
 
         current_config = build_config(i, render_modes, contact_vis, random_mass, block_mass, block_size, ee_flip_target_velocity, 
@@ -172,9 +43,10 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                                         noslip_iterations=noslip_iterations, noslip_tolerance=noslip_tolerance,impratio=impratio, 
                                         pad_friction=pad_friction, pad_solimp=pad_solimp, pad_solref=pad_solref)
         model = mujoco.MjModel.from_xml_string(world_xml_model)
+        print(f"Simulation timestep: {model.opt.timestep}")
         data = mujoco.MjData(model)
         contact = mujoco.MjContact()
-        mujoco.mj_resetDataKeyframe(model, data, 0)
+        mujoco.mj_resetData(model, data)
         fsm = FiniteStateMachine(model)
         if use_random_parameters is not True:
             renderer = SimulationRenderer(model, data, output_dir=sub_output_dir, local_time=formatted_time, render_modes=render_modes, contact_vis=contact_vis)
@@ -191,16 +63,23 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
         qvel_hist = []
         contact_hist = []
 
+        mpc_joint_hist = []
+
         trigger_iteration = 0
         screenshot_iteration = 0
-
+        save_csv_iteration = 0
+        debug_iteration = 0
 
         while has_block_steady == False and data.time < 8:
-            print(fsm.state)
             time = data.time
             mujoco.mj_step(model, data)
+                
             if use_random_parameters is not True:
                 renderer.render_frame(time)
+
+            if fsm.simulation_stop:
+                renderer.close()
+                break
 
             # Contact analysis
             if fsm.state == 'flip_block':
@@ -209,6 +88,7 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
             block_position, block_orientation = get_block_pose(model, data, 'block_0')
             block_trans_velocity, block_ang_velocity = get_block_velocity(data)
             #time_hist.append(time)
+                
 
             # Initial pose
             if state not in ['flip_block', 'move_back']:
@@ -216,6 +96,7 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                 state = fsm.reset_pose(model, data, time, current_position)
                 if state == 'approach_block':
                     block_trans_vel_preflip_hist.append(block_trans_velocity.tolist())
+
             
             # Flip block
             else:
@@ -226,14 +107,33 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                 time_hist.append(time)
 
                 # FLipping block
+                # if fsm.has_block_flipped == False and fsm.mpc_timestep <= len(fsm.mpc_ctrl_log):
+                #     fsm.flip_block_mpc(model, data, time)
+                #     if fsm.mpc_timestep > 0:
+                #         joint_angles = get_joint_angles(data).copy()
+                #         mpc_joint_hist.append(joint_angles)
+
+                # elif fsm.has_block_flipped and save_csv_iteration == 0:
+                #     with open('mpc_state_log_new.csv', 'w', newline='') as csvfile:
+                #         log_writer = csv.writer(csvfile)
+                #         log_writer.writerow(['Joint_1', 'Joint_2', 'Joint_3', 'Joint_4', 'Joint_5', 'Joint_6'])
+                #         for joint_history in mpc_joint_hist:
+                #             log_writer.writerow(joint_history)
+
+                #         print("MPC state log saved to 'mpc_state_log_new.csv'")
+                #     save_csv_iteration += 1
+
                 if fsm.has_block_flipped == False:
                     fsm.flip_block(model, data, time, ee_flip_target_velocity)
-                
+                    # fsm.flip_block_mpc(model, data, time)
+#===========================================================================================================
+
                 # After flipping block
                 else:
                     # Moving back
                     if fsm.state == 'post_flip_block':
                         fsm.move_back(model, data, time)
+                        #fsm.move_back_mpc()
                         if screenshot_iteration == 0: 
                             if use_random_parameters is not True:
                                 renderer.take_screenshot(time)
@@ -241,6 +141,7 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                     # Holding position
                     else:
                         fsm.flip_block(model, data, time, ee_flip_target_velocity)
+                        #fsm.flip_block_mpc(model, data, time)
 
                     # To log the release state of the block
                     if trigger_iteration == 0:
@@ -259,7 +160,7 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                         trigger_iteration += 1
 
                     # To log the state of the block when touch the floor for the first time
-                    if has_block_landed(data, block_position) == True:
+                    if has_block_landed(data) == True:
                         if trigger_iteration == 1:
                             touch_ground_time = np.copy(time)
                             if use_random_parameters is not True:
@@ -286,13 +187,33 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                             
                             trigger_iteration += 1
 
-        if use_random_parameters is not True:
+#==============================================================================
+        # qpos_differences = np.array(qpos_differences)
+
+        # # Plotting the differences for each of the first 6 joints
+        # fig, axs = plt.subplots(2, 3, figsize=(15, 10))
+        # for i in range(6):
+        #     row = i // 3
+        #     col = i % 3
+        #     axs[row, col].plot(qpos_differences[:, i], label=f'Joint {i+1}')
+        #     axs[row, col].set_title(f'Difference for Joint {i+1}')
+        #     axs[row, col].set_xlabel('Timestep')
+        #     axs[row, col].set_ylabel('Difference')
+        #     axs[row, col].legend()
+
+        # plt.tight_layout()
+        # plt.savefig('qpos_differences_updated.png')
+        # plt.show()
+
+
+#==============================================================================
+        if use_random_parameters is not True and render_modes != ["livecam"]:
             log_simulation_results(i, release_time, fsm, block_release_pos, block_release_orientation, 
                                    block_release_transvel, block_release_angvel, touch_ground_time, 
                                    block_touch_ground_position, block_touch_ground_orientation)
 
 
-            plot_and_save_contacts(sub_output_dir, contact_hist)
+            #plot_and_save_contacts(sub_output_dir, contact_hist)
             plot_and_save_results(sub_output_dir, i, release_time, time_hist, fsm, block_trans_vel_hist, landing_time_pred, 
                                 touch_ground_time, steady_time, block_position_hist, block_orientation_hist, 
                                 block_ang_vel_hist, block_release_pos, block_release_orientation, block_release_transvel, 
@@ -301,9 +222,10 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
 
 
             time_discrepancy_percentage, angle_discrepancy_percentage, height_discrepancy_percentage, landing_velocity_discrepancy_percentage = perform_discrepancy_analysis(release_time, touch_ground_time, block_release_pos, 
-                                                                                                                                                                            block_release_transvel, block_release_orientation, 
-                                                                                                                                                                            block_touch_ground_orientation, block_touch_ground_velocity, 
-                                                                                                                                                                            time_hist, block_position_hist, block_ang_vel_hist)
+                                                                                                                                                                            block_release_transvel, block_release_orientation,
+                                                                                                                                                                            block_touch_ground_position, block_touch_ground_orientation, 
+                                                                                                                                                                            block_touch_ground_velocity, time_hist, 
+                                                                                                                                                                            block_position_hist, block_ang_vel_hist)
  
             masses.append(block_mass)
             time_discrepancies.append(time_discrepancy_percentage)

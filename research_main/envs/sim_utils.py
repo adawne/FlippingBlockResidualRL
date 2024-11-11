@@ -9,6 +9,149 @@ import pandas as pd
 
 from scipy.spatial.transform import Rotation as R
 
+def create_directories(i, block_mass, formatted_time, render_modes):
+    if "livecam" not in render_modes:
+        output_dir = f'outputs/{formatted_time}_{render_modes}'
+        sub_output_dir = f'outputs/{formatted_time}_{render_modes}/{i}_{block_mass:.3f}'
+        
+        os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(sub_output_dir, exist_ok=True)
+        
+        return output_dir, sub_output_dir
+
+    else:
+        return None, None
+
+def create_directories_and_save_config(i, block_mass, formatted_time, render_modes, config):
+    if "livecam" not in render_modes:
+        output_dir = f'outputs/{formatted_time}_{render_modes}'
+        sub_output_dir = f'outputs/{formatted_time}_{render_modes}/{i}_{block_mass:.3f}'
+        
+        os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(sub_output_dir, exist_ok=True)
+        
+        config_filename = os.path.join(sub_output_dir, 'config.json')
+        save_config(config, config_filename)
+        
+        return output_dir, sub_output_dir
+    else:
+        return None, None
+
+def build_config(i, render_modes, contact_vis, random_mass, block_mass, block_size, ee_flip_target_velocity, 
+                 sim_description, block_solimp, block_solref, block_friction, cone, noslip_iterations, 
+                 noslip_tolerance, impratio, pad_friction, pad_solimp, pad_solref, clampness, use_random_parameters):
+    config = {
+        'iteration': i,
+        'render_modes': render_modes,
+        'contact_vis': contact_vis,
+        'random_mass': random_mass,
+        'block_mass': block_mass,
+        'block_size': block_size,
+        'ee_flip_target_velocity': ee_flip_target_velocity,
+        'sim_description': sim_description,
+        'block_solimp': block_solimp,
+        'block_solref': block_solref,
+        'block_friction': block_friction,
+        'cone': cone,
+        'noslip_iterations': noslip_iterations,
+        'noslip_tolerance': noslip_tolerance,
+        'impratio': impratio,
+        'pad_friction': pad_friction,
+        'pad_solimp': pad_solimp,
+        'pad_solref': pad_solref,
+        'clampness': clampness,
+        'use_random_parameters': use_random_parameters
+    }
+
+    return config
+
+def analyze_contacts(data, model, fsm, time):
+    contact_info = [time]  
+    for j in range(data.ncon):
+        geom1_name = model.geom(data.contact[j].geom1).name
+        geom2_name = model.geom(data.contact[j].geom2).name
+        distance = data.contact[j].dist
+        pos = data.contact[j].pos
+        contact_info.append((geom1_name, geom2_name, distance, pos))
+    return contact_info
+
+def perform_discrepancy_analysis(release_time, touch_ground_time, block_release_pos, block_release_transvel, 
+                                 block_touch_ground_height, block_release_quat, block_touch_ground_quat, block_touch_ground_velocity, 
+                                 time_hist, block_position_hist, block_ang_vel_hist):
+    return check_physical_assumptions(
+        release_time=release_time, 
+        touch_ground_time=touch_ground_time,
+        block_release_pos=block_release_pos, 
+        block_release_transvel=block_release_transvel, 
+        block_release_quat=block_release_quat, 
+        block_touch_ground_height= block_touch_ground_height, 
+        block_touch_ground_quat=block_touch_ground_quat, 
+        block_touch_ground_velocity=block_touch_ground_velocity,
+        time_hist=time_hist,
+        block_position_hist=block_position_hist,
+        block_ang_vel_hist=block_ang_vel_hist
+    )
+
+
+def plot_and_save_results(sub_output_dir, iteration, release_time, time_hist, fsm, block_trans_vel_hist, landing_time_pred, 
+                          touch_ground_time, steady_time, block_position_hist, block_orientation_hist, 
+                          block_ang_vel_hist, block_release_pos, block_release_orientation, block_release_transvel, 
+                          block_release_angvel, block_touch_ground_position, block_touch_ground_orientation, 
+                          block_steady_position, block_steady_orientation):
+    plot_velocity_ee(sub_output_dir, release_time, time_hist, fsm.ee_vel_hist)
+    plot_velocity_comparison(sub_output_dir, release_time, time_hist, fsm.ee_vel_hist, block_trans_vel_hist)
+    plot_joint_velocities(sub_output_dir, release_time, fsm.time_hist, fsm.joint_vel_hist, fsm.target_joint_vel_hist)
+    plot_block_pose(sub_output_dir, release_time, landing_time_pred, touch_ground_time, steady_time, time_hist, 
+                    block_position_hist, block_orientation_hist, block_trans_vel_hist, block_ang_vel_hist)
+    
+    save_iter_stats(sub_output_dir, iteration, release_time, touch_ground_time, steady_time, fsm.release_ee_velocity, 
+                    block_release_pos, block_release_orientation, block_release_transvel, block_release_angvel, 
+                    block_touch_ground_position, block_touch_ground_orientation, block_steady_position, 
+                    block_steady_orientation, block_position_hist)
+
+def plot_and_save_contacts(sub_output_dir, contact_hist):
+    contacts_csv_path = os.path.join(sub_output_dir, 'contacts.csv')  # This ensures a correct file path
+    print(f"Saving contacts to {contacts_csv_path}")
+    
+    # Ensure the directory exists
+    os.makedirs(sub_output_dir, exist_ok=True)
+    
+    # Check if contact_hist is empty
+    if not contact_hist:
+        print("Warning: contact_hist is empty, no contacts to save.")
+        return
+
+    # Save contacts to CSV
+    try:
+        save_contacts_to_csv(sub_output_dir, contact_hist)  # Pass only the directory here
+        print(f"Contacts saved successfully to {contacts_csv_path}")
+        
+        # Load and plot contacts
+        contacts_csv = pd.read_csv(contacts_csv_path)
+        plot_contacts_data(sub_output_dir, contacts_csv)
+        
+    except Exception as e:
+        print(f"Error while saving contacts: {e}")
+
+
+
+def log_simulation_results(i, release_time, fsm, block_release_pos, block_release_orientation, 
+                           block_release_transvel, block_release_angvel, touch_ground_time, 
+                           block_touch_ground_position, block_touch_ground_orientation):
+    print("="*91)
+    print(f"Iteration: {i}")
+    print(f"Block release time: {release_time}")
+    print(f"Release EE velocity: {fsm.release_ee_velocity}")
+    print(f"Block release position: {block_release_pos}")
+    print(f"Block release orientation: {block_release_orientation}")
+    print(f"Block translational release velocity: {block_release_transvel}")
+    print(f"Block angular release velocity: {block_release_angvel}")
+    print("-"*91)
+    print(f"Block touch the ground time: {touch_ground_time}")
+    print(f"Position when the block touched the ground: {block_touch_ground_position}")
+    print(f"Orientation when the block touched the ground: {block_touch_ground_orientation}")
+
+
 def save_config(config, filename):
     with open(filename, 'w') as f:
         json.dump(config, f, indent=4)
@@ -144,8 +287,8 @@ def save_iter_stats(output_dir, iteration, release_time, block_touch_ground_time
 
 
 
-def check_physical_assumptions(release_time, touch_ground_time, block_release_pos, block_release_transvel, block_release_orientation, 
-                                block_touch_ground_orientation, block_touch_ground_velocity, time_hist, 
+def check_physical_assumptions(release_time, touch_ground_time, block_release_pos, block_release_transvel, block_release_quat, 
+                                block_touch_ground_height, block_touch_ground_quat, block_touch_ground_velocity, time_hist, 
                                 block_position_hist, block_ang_vel_hist, g=9.81):
     
     block_release_ver_velocity = block_release_transvel[2]
@@ -159,12 +302,20 @@ def check_physical_assumptions(release_time, touch_ground_time, block_release_po
 
     time_in_air_exp = touch_ground_time - release_time
     time_ascent = (block_release_ver_velocity / g) 
-    time_descent = np.sqrt(2 * highest_height_exp / g)
+    time_descent_first = block_release_ver_velocity**2/g**2
+    time_descent_second = 2*(block_release_pos[2]-block_touch_ground_height)/g
+
+    time_descent = np.sqrt(time_descent_first + time_descent_second)
     time_in_air_theory =  time_ascent + time_descent
     time_discrepancy = np.abs(time_in_air_exp - time_in_air_theory)
     time_discrepancy_percentage = (time_discrepancy / time_in_air_theory) * 100
     
-    landing_velocity_theory = np.sqrt(block_release_transvel[0]**2 + g * time_descent**2)
+
+    delta_y = block_release_pos[2] - block_touch_ground_height 
+    landing_velocity_theory = np.sqrt(block_release_transvel[2]**2 + 2 * g * delta_y)
+
+
+    #landing_velocity_theory = np.sqrt(-(block_release_transvel[0]**2 - 2 * g * (block_release_pos[2] - block_touch_ground_height)))
     landing_velocity_exp = np.linalg.norm(block_touch_ground_velocity)
     landing_velocity_discrepancy = np.abs(landing_velocity_exp - landing_velocity_theory)
     landing_velocity_discrepancy_percentage = (landing_velocity_discrepancy / landing_velocity_theory) * 100
@@ -177,18 +328,26 @@ def check_physical_assumptions(release_time, touch_ground_time, block_release_po
     else:
         omega_exp = np.zeros_like(block_release_orientation)
     
-    release_quat = R.from_euler('zyx', block_release_orientation).as_quat()
-    touch_ground_quat = R.from_euler('zyx', block_touch_ground_orientation).as_quat()
+    release_quat = np.asarray(block_release_quat).flatten()
+    touch_ground_quat = np.asarray(block_touch_ground_quat).flatten()
+
+    # Convert to Rotation objects
+    release_rot = R.from_quat(release_quat)
+    touch_ground_rot = R.from_quat(touch_ground_quat)
 
     delta_rotation = R.from_rotvec(omega_exp * time_in_air_exp)  # Rotation vector -> Rotation matrix
-    final_rotation_theory = R.from_quat(release_quat) * delta_rotation
-    theta_final_theory_euler = final_rotation_theory.as_euler('zyx')
-    
-    theta_final_discrepancy = theta_final_theory_euler - np.array(block_touch_ground_orientation)
-    theta_final_discrepancy = np.arctan2(np.sin(theta_final_discrepancy), np.cos(theta_final_discrepancy))
-    theta_final_discrepancy_degrees = np.degrees(theta_final_discrepancy)
+    final_rotation_theory_quat = release_rot * delta_rotation
+
+
+    final_rotation_theory_euler = final_rotation_theory_quat.as_euler('xyz', degrees=True)
+
+    final_orientation_exp_euler = R.from_quat(touch_ground_quat).as_euler('xyz', degrees=True)
+
+    theta_final_discrepancy_degrees = final_rotation_theory_euler - final_orientation_exp_euler
+    theta_final_discrepancy_degrees = (theta_final_discrepancy_degrees + 180) % 360 - 180
     theta_final_discrepancy_percentage = (np.abs(theta_final_discrepancy_degrees) / 360.0) * 100.0
-    
+
+
     print("-" * 91)
     print("Testing Physical Assumptions")
     print("-" * 91)
@@ -205,13 +364,14 @@ def check_physical_assumptions(release_time, touch_ground_time, block_release_po
     print(f"Discrepancy in landing velocity: {landing_velocity_discrepancy:.4f} m/s ({landing_velocity_discrepancy_percentage:.2f}%)")
     print("-" * 91)
     print(f"Average angular velocity: {omega_exp}")
-    print(f"Final orientation (experimental, Euler): {block_touch_ground_orientation}")
-    print(f"Final orientation (theoretical, Euler): {theta_final_theory_euler}")
+    print(f"Final orientation (experimental, Euler): {final_orientation_exp_euler}")
+    print(f"Final orientation (theoretical, Euler): {final_rotation_theory_euler}")
     print(f"Discrepancy in final orientation (degrees): {theta_final_discrepancy_degrees}")
-    print(f"Discrepancy in final orientation (percentage): {[f'{val:.2f}%' for val in theta_final_discrepancy_percentage]}")
+    print(f"Discrepancy in final orientation (percentage): {theta_final_discrepancy_percentage}%")
     print("=" * 91)
 
     return time_discrepancy_percentage, theta_final_discrepancy_percentage, height_discrepancy_percentage, landing_velocity_discrepancy_percentage
+        
 
 def plot_discrepancy_vs_mass(output_dir, masses, time_discrepancies, angle_discrepancies, height_discrepancies, landing_velocities_discrepancies, block_release_ver_velocity):
     plt.figure(figsize=(8, 30)) 

@@ -17,7 +17,7 @@ def process_trajectory(interpolate=True, new_timestep=None):
     qvel_log = []
     ctrl_log = []
 
-    with open('trajectory_log.csv', 'r') as csvfile:
+    with open('trajectory_mpc.csv', 'r') as csvfile:
         reader = csv.reader(csvfile)
         next(reader)  # Skip the header
         for row in reader:
@@ -33,7 +33,7 @@ def process_trajectory(interpolate=True, new_timestep=None):
     ctrl_log = np.array(ctrl_log)
 
     # Step 2: Filter the data where time > 4.0
-    filter_indices = time_log > 4.0
+    filter_indices = time_log > 3.5
     time_log_filtered = time_log[filter_indices]
     qpos_log_filtered = qpos_log[filter_indices]
     qvel_log_filtered = qvel_log[filter_indices]
@@ -83,7 +83,7 @@ def process_trajectory(interpolate=True, new_timestep=None):
 
 # Example usage:
 # 1. If you want to interpolate with a 0.002 timestep:
-process_trajectory(interpolate=True, new_timestep=0.002)
+process_trajectory(interpolate=True, new_timestep=0.01)
 
 # 2. If you want to filter without interpolation:
-process_trajectory(interpolate=False)
+#process_trajectory(interpolate=False)

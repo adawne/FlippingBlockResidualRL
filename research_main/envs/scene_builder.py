@@ -6,7 +6,7 @@ from scipy.spatial.transform import Rotation as R
 
 
 class SimulationRenderer:
-    def __init__(self, model, data, output_dir, local_time, render_modes, contact_vis, framerate=60):
+    def __init__(self, model, data, output_dir, local_time, render_modes, contact_vis=None, framerate=60):
         self.model = model
         self.data = data
         self.output_dir = output_dir
@@ -18,14 +18,15 @@ class SimulationRenderer:
         self.cameras = {}
         self.outs = {}
 
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir)
+        if render_modes != ["livecam"]:
+            if not os.path.exists(self.output_dir):
+                os.makedirs(self.output_dir)
 
         for mode in self.render_modes:
             self.cameras[mode] = mujoco.MjvCamera()
             mujoco.mjv_defaultFreeCamera(self.model, self.cameras[mode])
             
-            if mode == 'livecam':
+            if mode == 'livecam': 
                 self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
             else:
                 self.renderers[mode] = mujoco.Renderer(self.model, height=1024, width=1440)
@@ -161,7 +162,8 @@ def create_ur_model(marker_position=None,
                     impratio=1, 
                     pad_friction=5,
                     pad_solimp=[0.97, 0.99, 0.001],
-                    pad_solref=[0.004, 1]):
+                    pad_solref=[0.004, 1],
+                    use_mode="manual_flip",):
 
     marker_body = ""
     if marker_position is not None:
@@ -171,6 +173,14 @@ def create_ur_model(marker_position=None,
     if block_positions_orientations is not None:
         block_bodies = create_block_bodies(block_positions_orientations, block_mass, block_size,
                                             block_solimp, block_solref, block_friction)
+
+    if use_mode == "manual_flip":
+        include_file = '<include file="universal_robots_ur10e_2f85/ur10e_2f85.xml"/>'
+    elif use_mode == "debug":
+        include_file = '<include file="../research_main/envs/universal_robots_ur10e_2f85/ur10e_2f85.xml"/>'
+    else:
+        include_file = '<include file="research_main/envs/universal_robots_ur10e_2f85/ur10e_2f85.xml"/>'
+
 
     xml_string = f'''
     <mujoco model="ur10e scene">
@@ -242,7 +252,7 @@ def create_ur_model(marker_position=None,
         </default>
     </default>
 
-        <include file="universal_robots_ur10e_2f85/ur10e_2f85.xml"/>
+        {include_file}
 
         <option integrator="implicitfast"
                 cone="{cone}" 
@@ -271,15 +281,24 @@ def create_ur_model(marker_position=None,
             {block_bodies}
         </worldbody>
 
-
-        <keyframe>
-            <key name="home" qpos="-1.5585076620891312 -2.24059215309729 2.7381982806889287 -2.0608726328910887 -1.570816385660346 0.012994184554737283 0.4977685014807726 -0.0005080874815357948 0.49379563711722124 -0.48450963344132164 0.4980256318035263 0.0008091686346243922 0.4923788223820397 -0.4846690775202845 0.2439992149733207 0.17704907687052862 0.09451305877887498 0.9998676880038513 0.0010406732397370223 -0.016119260465067516 0.0019216990141398692" ctrl="-1.5707963267948966 -2.2364409549094275 2.7310424726607567 -2.0626062324855856 -1.5707963267948966 0.0 225.0" />
-        </keyframe>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
+    <sensor>
+      <framelinvel name="block_linvel" objtype="body" objname="block_0"/>
+      <frameangvel name="block_angvel" objtype="body" objname="block_0"/>
+     </sensor>
 
     </mujoco>'''
     
     return xml_string
 
+        # <keyframe>
+        #     <key name="home" qpos="-1.5585076620891312 -2.24059215309729 2.7381982806889287 -2.0608726328910887 -1.570816385660346 0.012994184554737283 0.4977685014807726 -0.0005080874815357948 0.49379563711722124 -0.48450963344132164 0.4980256318035263 0.0008091686346243922 0.4923788223820397 -0.4846690775202845 0.2439992149733207 0.17704907687052862 0.09451305877887498 0.9998676880038513 0.0010406732397370223 -0.016119260465067516 0.0019216990141398692" ctrl="-1.5707963267948966 -2.2364409549094275 2.7310424726607567 -2.0626062324855856 -1.5707963267948966 0.0 225.0" />
+        # </keyframe>   
+    
+# <keyframe>
+#   <key name="pre_grasp" 
+#        qpos="-1.541835367139243296e+00 -1.059456799861467458e+00 1.609300971851839623e+00 -2.093487712640632825e+00 -1.576181770989158792e+00 3.421564191141927835e-02 2.749467004610150599e-03 -3.446936530674758314e-04 2.318167708603486969e-03 -2.769118328924467624e-03 2.981978035912765529e-03 -1.277230716160646486e-03 7.809507885206723498e-04 6.305411662903903723e-05 9.000000000000000222e-01 2.000000000000000111e-01 7.915957019982564069e-02 1.000000000000000000e+00 1.737233045037581357e-16 -1.210444891199573942e-18 1.974498956430334863e-17" 
+#        qvel="-8.492467698870265549e-03 3.794627672162954601e-01 2.691122227557397051e-01 -5.565978886734965769e-01 5.521722163383100540e-02 -5.698038355736161770e-02 7.288926607929570659e-03 1.525834734809385640e-01 1.592825260775876939e-01 -2.043554006951733282e-01 -2.093023706378514467e-02 1.389772702035863006e-02 1.430726291735173183e-01 3.540043349936022876e-02 6.158268339717667650e-17 5.782411586589348764e-17 -4.685349945231594977e-06 -6.432467852384118472e-16 6.757698472341156761e-16 1.459502924499722476e-16" />
+# </keyframe>
         
 
     
