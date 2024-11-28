@@ -142,7 +142,7 @@ def create_block_bodies(block_positions_orientations, block_mass, block_size,
         <body name="block_{i}" pos="{pos[0]} {pos[1]} {pos[2]}" quat="{quat[3]} {quat[0]} {quat[1]} {quat[2]}">
             <joint name="block_joint" type="free" damping="0"></joint>
             <inertial pos="0 0 0" mass="{block_mass}" diaginertia="0.001 0.001 0.001" />
-            <geom name="blue_subbox" size="{block_size[0]} {block_size[1]} {block_size[2]}" pos="0 0 0" type="box" rgba="0.3 0.5 0.8 1" 
+            <geom name="blue_subbox" size="{block_size[0]} {block_size[1]} {block_size[2]}" pos="0 0 0" type="box" rgba="1 0.5 0 1" 
             solimp="0.99 0.995 0.0000001 0.5 2" solref="0.005 2" friction="5 0.3 0.001" />
         </body>
         '''
@@ -178,7 +178,7 @@ def create_ur_model(marker_position=None,
         include_file = '<include file="universal_robots_ur10e_2f85/ur10e_2f85.xml"/>'
     elif use_mode == "debug":
         include_file = '<include file="../research_main/envs/universal_robots_ur10e_2f85/ur10e_2f85.xml"/>'
-    else:
+    elif use_mode == "RL_train":
         include_file = '<include file="research_main/envs/universal_robots_ur10e_2f85/ur10e_2f85.xml"/>'
 
 
@@ -205,7 +205,11 @@ def create_ur_model(marker_position=None,
         <default class="size2">
             <joint damping="2"/>
             <general forcerange="-56 56"/>
-        </default>
+    </default>
+        <default class="size2_limited">
+        <joint damping="2"/>
+        <general forcerange="-28 28"/>
+      </default>
         <default class="visual">
             <geom type="mesh" contype="0" conaffinity="0" group="2"/>
         </default>
@@ -284,21 +288,20 @@ def create_ur_model(marker_position=None,
     <sensor>
       <framelinvel name="block_linvel" objtype="body" objname="block_0"/>
       <frameangvel name="block_angvel" objtype="body" objname="block_0"/>
+      <framequat name="block_quat" objtype="body" objname="block_0"/>
      </sensor>
+
+    <keyframe>
+    <key name="pre_flip" 
+        qpos="-1.58344873 -2.24463774 2.7123823 -2.05985514 -1.57268012 0.00907312 0.49623708 -0.00458884 0.4903639 -0.47336778 0.49631135 -0.00337029 0.4912198 -0.47643432 0.2607873 0.17085807 0.09661028 0.99980565 0.00499017 -0.01857321 -0.00433588"
+        qvel="-9.37863353e-02 5.81125554e-02 -2.13125801e-02 -6.64160340e-02 -3.16832660e-05 -9.23979267e-02 7.39071633e-03 1.26619087e-03 1.19416571e-02 -1.92274648e-02 6.87531067e-03 3.60044102e-01 2.31275265e-01 -6.85808114e-01 4.06573810e-02 -3.29171748e-02 4.16127098e-03 -1.64363591e-01 -2.77543571e-02 -5.00244216e-02" />
+    </keyframe>
+
 
     </mujoco>'''
     
     return xml_string
 
-        # <keyframe>
-        #     <key name="home" qpos="-1.5585076620891312 -2.24059215309729 2.7381982806889287 -2.0608726328910887 -1.570816385660346 0.012994184554737283 0.4977685014807726 -0.0005080874815357948 0.49379563711722124 -0.48450963344132164 0.4980256318035263 0.0008091686346243922 0.4923788223820397 -0.4846690775202845 0.2439992149733207 0.17704907687052862 0.09451305877887498 0.9998676880038513 0.0010406732397370223 -0.016119260465067516 0.0019216990141398692" ctrl="-1.5707963267948966 -2.2364409549094275 2.7310424726607567 -2.0626062324855856 -1.5707963267948966 0.0 225.0" />
-        # </keyframe>   
-    
-# <keyframe>
-#   <key name="pre_grasp" 
-#        qpos="-1.541835367139243296e+00 -1.059456799861467458e+00 1.609300971851839623e+00 -2.093487712640632825e+00 -1.576181770989158792e+00 3.421564191141927835e-02 2.749467004610150599e-03 -3.446936530674758314e-04 2.318167708603486969e-03 -2.769118328924467624e-03 2.981978035912765529e-03 -1.277230716160646486e-03 7.809507885206723498e-04 6.305411662903903723e-05 9.000000000000000222e-01 2.000000000000000111e-01 7.915957019982564069e-02 1.000000000000000000e+00 1.737233045037581357e-16 -1.210444891199573942e-18 1.974498956430334863e-17" 
-#        qvel="-8.492467698870265549e-03 3.794627672162954601e-01 2.691122227557397051e-01 -5.565978886734965769e-01 5.521722163383100540e-02 -5.698038355736161770e-02 7.288926607929570659e-03 1.525834734809385640e-01 1.592825260775876939e-01 -2.043554006951733282e-01 -2.093023706378514467e-02 1.389772702035863006e-02 1.430726291735173183e-01 3.540043349936022876e-02 6.158268339717667650e-17 5.782411586589348764e-17 -4.685349945231594977e-06 -6.432467852384118472e-16 6.757698472341156761e-16 1.459502924499722476e-16" />
-# </keyframe>
-        
+
 
     

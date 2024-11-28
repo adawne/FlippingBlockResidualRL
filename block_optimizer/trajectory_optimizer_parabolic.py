@@ -28,10 +28,6 @@ def objective(x, I, m):
     
     return total_energy
 
-# Add regularization to objective to ensure smooth optimization
-def objective_with_regularization(x, I, m):
-    regularization = 1e-6 * np.sum(x**2)
-    return objective(x, I, m) + regularization
 
 # Constraint to ensure the block lands at pi (upright)
 def constraint_theta_final(x):
@@ -51,10 +47,10 @@ def constraint_omega_limit(x):
 
 # Bounds for the optimization variables
 bnds = [
-    (0.1, None),              # v_x0 >= 0.1
-    (0, 2),              # v_y0 >= 0
+    (0.2, None),              # v_x0 >= 0.1
+    (0.5, 2),              # v_y0 >= 0
     (0, 2 * np.pi / 3),     # 0 <= theta_0 <= 2*pi/3
-    (0, 4.45),              # 0 <= omega <= 4.45
+    (0, 3.14),              # 0 <= omega <= 4.45
     (0.35, None)               # h_0 >= 0 (release height)
 ]
 
@@ -87,7 +83,7 @@ for _ in range(4):
     
     for x0 in x0_list:
         result = minimize(
-            objective_with_regularization,
+            objective,
             x0,
             args=(I, m),
             method='SLSQP',

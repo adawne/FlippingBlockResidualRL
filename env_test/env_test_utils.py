@@ -1,6 +1,18 @@
+import os
 import numpy as np
+import random
+
 import matplotlib.pyplot as plt
 
+def create_directories(formatted_time, render_modes, mode="block_traj"):
+    if mode == "block_traj":
+        output_dir = f'outputs standalone/{formatted_time}_{render_modes}'
+    elif mode == "mujoco_test":
+        output_dir = f'outputs mujoco test/{formatted_time}_{render_modes}'
+
+    os.makedirs(output_dir, exist_ok=True)
+    
+    return output_dir
 
 
 def log_simulation_results(release_time, block_release_pos, block_release_orientation, 
@@ -17,9 +29,79 @@ def log_simulation_results(release_time, block_release_pos, block_release_orient
     print(f"Position when the block touched the ground: {block_touch_ground_position}")
     print(f"Orientation when the block touched the ground: {block_touch_ground_orientation}")
 
+def plot_joints_data(output_dir, time_values, qpos_values, qvel_values, ctrl_values=None):
+    qpos_values = np.array(qpos_values)
+    qvel_values = np.array(qvel_values)
+    num_joints = qpos_values.shape[1]
+
+    # Plot joint positions
+    fig1, axs1 = plt.subplots(num_joints, 1, figsize=(10, 12))
+    for i in range(num_joints):
+        axs1[i].plot(time_values, qpos_values[:, i], label=f"Joint {i+1} Position")
+        axs1[i].set_ylabel(f"qpos {i+1}")
+        axs1[i].legend()
+        axs1[i].grid(True)
+        # Get min and max values
+        min_val = np.min(qpos_values[:, i])
+        max_val = np.max(qpos_values[:, i])
+        # Plot horizontal lines
+        axs1[i].axhline(min_val, color='blue', linestyle='--', linewidth=0.8)
+        axs1[i].axhline(max_val, color='red', linestyle='--', linewidth=0.8)
+        # Annotate values
+        axs1[i].text(time_values[0], min_val, f"{min_val:.2f}", color='blue', verticalalignment='bottom')
+        axs1[i].text(time_values[0], max_val, f"{max_val:.2f}", color='red', verticalalignment='bottom')
+    axs1[0].set_title("Joint Positions over Time")
+    axs1[-1].set_xlabel("Time (s)")
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'joint_positions_vs_time.png'))
+
+    # Plot joint velocities
+    fig2, axs2 = plt.subplots(num_joints, 1, figsize=(10, 12))
+    for i in range(num_joints):
+        axs2[i].plot(time_values, qvel_values[:, i], label=f"Joint {i+1} Velocity", color='orange')
+        axs2[i].set_ylabel(f"qvel {i+1}")
+        axs2[i].legend()
+        axs2[i].grid(True)
+        # Get min and max values
+        min_val = np.min(qvel_values[:, i])
+        max_val = np.max(qvel_values[:, i])
+        # Plot horizontal lines
+        axs2[i].axhline(min_val, color='blue', linestyle='--', linewidth=0.8)
+        axs2[i].axhline(max_val, color='red', linestyle='--', linewidth=0.8)
+        # Annotate values
+        axs2[i].text(time_values[0], min_val, f"{min_val:.2f}", color='blue', verticalalignment='bottom')
+        axs2[i].text(time_values[0], max_val, f"{max_val:.2f}", color='red', verticalalignment='bottom')
+    axs2[0].set_title("Joint Velocities over Time")
+    axs2[-1].set_xlabel("Time (s)")
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'joint_velocities_vs_time.png'))
+
+    # Plot control signals (if provided)
+    if ctrl_values is not None:
+        ctrl_values = np.array(ctrl_values)
+        fig3, axs3 = plt.subplots(num_joints, 1, figsize=(10, 12))
+        for i in range(num_joints):
+            axs3[i].plot(time_values, ctrl_values[:, i], label=f"Joint {i+1} Control", color='green')
+            axs3[i].set_ylabel(f"ctrl {i+1}")
+            axs3[i].legend()
+            axs3[i].grid(True)
+            # Get min and max values
+            min_val = np.min(ctrl_values[:, i])
+            max_val = np.max(ctrl_values[:, i])
+            # Plot horizontal lines
+            axs3[i].axhline(min_val, color='blue', linestyle='--', linewidth=0.8)
+            axs3[i].axhline(max_val, color='red', linestyle='--', linewidth=0.8)
+            # Annotate values
+            axs3[i].text(time_values[0], min_val, f"{min_val:.2f}", color='blue', verticalalignment='bottom')
+            axs3[i].text(time_values[0], max_val, f"{max_val:.2f}", color='red', verticalalignment='bottom')
+        axs3[0].set_title("Joint Controls over Time")
+        axs3[-1].set_xlabel("Time (s)")
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, 'joint_controls_vs_time.png'))
 
 
-def plot_block_data(times, block_orientations_quat, desired_orientations_quat, block_orientations_euler, 
+
+def plot_block_data(output_dir, times, block_orientations_quat, desired_orientations_quat, block_orientations_euler, 
                     xfrc_applied_data, qfrc_applied_data, block_positions, block_trans_vels, block_ang_vels, 
                     flipped_time=None, touch_ground_time=None):
 
@@ -45,7 +127,6 @@ def plot_block_data(times, block_orientations_quat, desired_orientations_quat, b
     if touch_ground_time is not None:
         axs1[0].axvline(x=touch_ground_time, color='g', linestyle='--', label="Touch Ground Time")
 
-    
     # Block Positions
     axs1[1].plot(times, block_positions[:, 0], label="Pos x", color='blue')
     axs1[1].plot(times, block_positions[:, 1], label="Pos y", color='green')
@@ -85,7 +166,7 @@ def plot_block_data(times, block_orientations_quat, desired_orientations_quat, b
     
     fig1.suptitle("Block Angular Velocities, Positions, Translational Velocities, and Euler Angles Over Time")
     plt.tight_layout(rect=[0, 0.03, 1, 0.97])
-    plt.savefig('block_state_vs_time.png')
+    plt.savefig(os.path.join(output_dir, 'block_state_vs_time.png'))
 
     # Plot 2: Block Orientation Quaternion
     fig2, axs2 = plt.subplots(4, 1, figsize=(10, 12))
@@ -132,7 +213,7 @@ def plot_block_data(times, block_orientations_quat, desired_orientations_quat, b
     
     fig2.suptitle("Block Orientation (Quaternion Components) Over Time")
     plt.tight_layout(rect=[0, 0.03, 1, 0.97])
-    plt.savefig('block_orientation_quat_vs_time.png')
+    plt.savefig(os.path.join(output_dir, 'block_orientation_quat_vs_time.png'))
 
     # Plot 3: Applied Forces
     fig3, axs3 = plt.subplots(2, 1, figsize=(10, 8))
@@ -157,4 +238,19 @@ def plot_block_data(times, block_orientations_quat, desired_orientations_quat, b
     
     fig3.suptitle("Applied Forces Over Time")
     plt.tight_layout(rect=[0, 0.03, 1, 0.97])
-    plt.savefig('applied_forces_vs_time.png')
+    plt.savefig(os.path.join(output_dir, 'applied_forces_vs_time.png'))
+
+
+
+def generate_random_block_params():
+    block_mass = round(random.uniform(0.01, 0.3), 4)
+
+    # Generate random sizes for block_size within their specified ranges
+    length = round(random.uniform(0.02, 0.08), 4)  # largest dimension
+    height = round(random.uniform(0.01, 0.04), 4)  # second largest dimension
+    width = round(random.uniform(0.005, 0.02), 4)  # smallest dimension
+
+    block_size = sorted([height, width, length], reverse=True)
+
+    return block_mass, block_size
+

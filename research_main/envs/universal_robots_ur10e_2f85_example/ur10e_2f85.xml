@@ -309,6 +309,28 @@
       gainprm="0.3137255 0 0" biasprm="0 -100 -10"/>
   </actuator>
 
+  <sensor>
+      <framepos name="pinch_pos" objtype="site" objname="pinch"/>
+      <framequat name="pinch_quat" objtype="site" objname="pinch"/>
+      <framelinvel name="pinch_linvel" objtype="site" objname="pinch"/>
+      <frameangvel name="pinch_angvel" objtype="site" objname="pinch"/>
+  </sensor>
+
+  <keyframe>
+    <key name="home" qpos="-1.570796327014344 -2.240218690399106 2.738914482933759 -2.061827446901762 -1.5707964670563719 1.1848334902186687e-09 0.4979989740823648 0.0001012371909504819 0.4949544136799612 -0.4848148013434436 0.4979991367279576 0.00010426058723803009 0.494960418271144 -0.48489299498917365" ctrl="-1.5707963267948966 -2.2364409549094275 2.7310424726607567 -2.0626062324855856 -1.5707963267948966 0.0 225.0" />
+  </keyframe>
+  <!-- <actuator>
+    <general name="shoulder_pan" joint="shoulder_pan_joint" biastype="affine" biasprm="0 0 -4.78"/>
+    <general name="shoulder_lift" joint="shoulder_lift_joint" biastype="affine" biasprm="0 0 -4.78"/>
+    <general name="elbow" joint="elbow_joint" biastype="affine" biasprm="0 0 -3.18"/>
+    <general name="wrist_1" joint="wrist_1_joint" biastype="affine" biasprm="0 0 -3.18"/>
+    <general name="wrist_2" joint="wrist_2_joint" biastype="affine" biasprm="0 0 -3.18"/>
+    <general name="wrist_3" joint="wrist_3_joint" biastype="affine" biasprm="0 0 -3.18"/>
+    <general class="2f85" name="fingers_actuator" tendon="split" forcerange="-5 5" ctrlrange="0 255"
+      gainprm="0.3137255 0 0" biasprm="0 -100 -10"/>
+  </actuator> -->
+
+
   <!-- <keyframe> -->
   <!--   <key name="home" qpos="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0" ctrl="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0"/> -->
   <!-- </keyframe> -->

@@ -1,61 +1,25 @@
 import time, pdb
-
+import sys
 import json
+import os
 
 import mujoco
 import mujoco.viewer
 
-def create_world_xml_model(object_xml_models):
-    xml_string = \
-        f'''<mujoco>
-        <option gravity="0 0 -10"/>
-        <compiler angle="radian"/>
-        <asset>
-        <texture name="plane" type="2d" builtin="checker" rgb1=".2 .3 .4" rgb2=".1 0.15 0.2"
-        width="512" height="512" mark="cross" markrgb=".8 .8 .8"/>
-        <material name="plane" reflectance="0.3" texture="plane" texrepeat="1 1" texuniform="true"/>
-        </asset>
-        
-        <worldbody>
-        <light name="top" pos="0 0 1"/>
-        <geom name="floor" pos="0 0 0" size="0 0 .25" type="plane" material="plane" condim="3"/>'''
+from datetime import datetime
+from env_test_utils import *
 
-    for object_xml_model in object_xml_models:
-        xml_string += object_xml_model
-        
-    xml_string += \
-        f'''</worldbody>
-        </mujoco>'''
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.abspath(os.path.join(current_dir, '..', 'research_main', 'envs'))
+sys.path.append(parent_dir)
 
-    return xml_string
-
-def create_cube_model(cube_name, center, coordinates):
-
-    xml_string = \
-        f'''
-        <body name="{cube_name}" pos="{center[0]} {center[1]} {center[2]}">
-        <freejoint name="{cube_name}_joint"/>'''
-
-    for coordinate in coordinates:
-        position = (.1*coordinate[0]+.05, .1*coordinate[1]+.05, .1*coordinate[2]+.05)
-        xml_string += \
-            f'''
-            <geom size="0.05 0.05 0.05" pos="{position[0]} {position[1]} {position[2]}" type="box"/>
-            '''
-        # <geom size="0.05 0.05 0.05" pos="0.15 0.05 0.05" type="box"/>
-        # <geom size="0.05 0.05 0.05" pos="0.15 -0.05 0.05" type="box"/>
-
-    xml_string += \
-        f'''
-        </body>
-        '''
-
-    return xml_string
+from mujoco_utils import *
+from scene_builder import *
 
 def xml_test():
     xml_string = \
         f'''<mujoco model="ur10e scene">
-        <include file="universal_robots_ur10e_2f85_example/ur10e_2f85.xml"/>
+        <include file="../research_main/envs/universal_robots_ur10e_2f85_example/ur10e_2f85.xml"/>
 
         <statistic center="0.4 0 0.4" extent="1"/>
         
@@ -82,81 +46,86 @@ def xml_test():
 
 
 if (__name__=='__main__'):
+    #try:
+    local_time = datetime.now()
+    formatted_time = local_time.strftime('%Y-%m-%d_%H-%M')
+    #output_dir = create_directories(formatted_time=formatted_time, render_modes="livecam", mode="mujoco_test")
 
-    # with open('./cube_model/coordinates.json') as json_file:
-    #     multiple_cubes_coordinates = json.load(json_file)
-
-    # # print(cube_coordinates)
-
-    # cube_xml_models = []
-    # for i, cube_coordinates in enumerate(multiple_cubes_coordinates):
-    #     cube_xml_model = create_cube_model(cube_name='cube_{}'.format(i),
-    #                                        center=[0, 0, 1],
-    #                                        coordinates = cube_coordinates)
-
-    #     cube_xml_models.append(cube_xml_model)
-
-    # world_xml_model = create_world_xml_model(cube_xml_models)
-
-    world_xml_model = xml_test()
-
-    # print(world_xml_model)
+    # current_dir = os.path.dirname(__file__)
+    # path_to_model = os.path.join(current_dir, '..', 'research_main', 'envs', 'universal_robots_ur10e_2f85_example', 'ur10e_2f85.xml')
+    model = mujoco.MjModel.from_xml_path('ur10e_2f85_mpc.xml')     
+    #model.opt.timestep = 0.008   
     
-    model = mujoco.MjModel.from_xml_string(world_xml_model)
-
+    #model = mujoco.MjModel.from_xml_path("mujoco_menagerie/universal_robots_ur10e/scene.xml")
     data = mujoco.MjData(model)
-    #print("Name of geom: ", model.geom(45).name, model.geom(57).name)
-    # print(data.geom_xpos)
-    
+
+    mpc_ctrl = []
+    mpc_qpos = []
+    mpc_qvel = []
+    mpc_timestep = 0
+    csv_initialized = False
+    current_dir = os.path.dirname(__file__)
+    csv_path = os.path.join(current_dir, '..', 'research_main/envs/precomputed_mpc_traj', 'interpolated_trajectory.csv')
+
+    # Open the CSV file using the corrected path
+    with open(csv_path, 'r') as csvfile:
+        reader = csv.DictReader(csvfile)
+        mpc_ctrl = []
+        mpc_qpos = []
+        mpc_qvel = []
+        for row in reader:
+            ctrl_values = [float(x) for x in row['Ctrl'].split(',')]
+            qpos_values = [float(x) for x in row['QPos'].split(',')]
+            qvel_values = [float(x) for x in row['QVel'].split(',')]
+            mpc_ctrl.append(ctrl_values[:6])
+            mpc_qpos.append(qpos_values[:6])
+            mpc_qvel.append(qvel_values[:6])
+
+    mpc_ctrl = np.array(mpc_ctrl)
+    mpc_qpos = np.array(mpc_qpos)
+    mpc_qvel = np.array(mpc_qvel)
+
     with mujoco.viewer.launch_passive(model, data) as viewer:
-        # Close the viewer automatically after 30 wall-seconds.
-        start = time.time()
+        start_time = time.time()
         num = 0
+        mujoco.mj_resetDataKeyframe(model, data, 0)
+        data.qpos[:6] = mpc_qpos[0]
+        data.qvel[:6] = mpc_qvel[0]
+        print("Simulation timestep: ", model.opt.timestep)
 
-        # # Function to make the window full screen
-        # def set_fullscreen(window):
-        #     monitor = glfw.get_primary_monitor()
-        #     mode = glfw.get_video_mode(monitor)
-        #     glfw.set_window_monitor(window, monitor, 0, 0, mode.size.width, mode.size.height, mode.refresh_rate)
-
-        # # Set the viewer window to full screen
-        # set_fullscreen(viewer.window)
-
-        while viewer.is_running() and time.time() - start < 300:
-            
+        while viewer.is_running() and time.time() - start_time < 5:
+            # active_motors.print_actuator_parameters(model)
             step_start = time.time()
+            current_time = time.time() - start_time
 
-            # mj_step can be replaced with code that also evaluates
-            # a policy and applies a control signal before stepping the physics.
-            # data.xpos[0][0] += .1
-            # my_force = [0,0,.0]
-            # my_torque = [0,0,0]
-            # point_on_body = [0,0,0]
-            # bodyid = 1
-            
-            # mujoco.mj_applyFT(model, data, my_force, my_torque, point_on_body, bodyid, data.qfrc_applied)
+#========================================================================================
+            if mpc_timestep < len(mpc_ctrl):
+                given_ctrl = mpc_qpos[mpc_timestep]
+                data.ctrl[:6] = given_ctrl
 
-            # data.xfrc_applied[1][2] = 30
-            # data.xfrc_applied[1][4] = .001
+                # Log data at each time step
+                if not csv_initialized:
+                    with open('mpc_log.csv', 'w', newline='') as csvfile:
+                        log_writer = csv.writer(csvfile)
+                        log_writer.writerow(['Time', 'Ctrl', 'QPos', 'QVel'])  # Write headers
+                    csv_initialized = True  # Prevent rewriting headers
 
-            # print(data.xfrc_applied)
-            
+                with open('mpc_log.csv', 'a', newline='') as csvfile:
+                    log_writer = csv.writer(csvfile)
+                    ctrl_str = ','.join(map(str, data.ctrl[:6].copy()))
+                    qpos_str = ','.join(map(str, data.qpos[:6].copy()))
+                    qvel_str = ','.join(map(str, data.qvel[:6].copy()))
+                    log_writer.writerow([data.time, ctrl_str, qpos_str, qvel_str])
+
+                mpc_timestep += 1
+ 
+#========================================================================================
             mujoco.mj_step(model, data)
-            # print(data.geom_xpos)
-            # num += 1
-            # print(num)
-
-            # pdb.set_trace()
-
-
-            # Example modification of a viewer option: toggle contact points every two seconds.
-            #with viewer.lock():
-            #    viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = int(data.time % 2)
-                
-            # Pick up changes to the physics state, apply perturbations, update options from GUI.
             viewer.sync()
 
-            # Rudimentary time keeping, will drift relative to wall clock.
             time_until_next_step = model.opt.timestep - (time.time() - step_start)
             if time_until_next_step > 0:
                 time.sleep(time_until_next_step)
+    #except:
+        
+        #plot_joints_data(output_dir, time_datas, qpos_datas, qvel_datas, ctrl_datas)

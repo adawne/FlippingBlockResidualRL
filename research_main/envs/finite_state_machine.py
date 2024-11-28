@@ -43,25 +43,29 @@ class FiniteStateMachine:
         self.qvel_log = []
 
         self.mpc_time_log = []
-        self.mpc_state_log = []
-        self.mpc_state_log_2 = []
+        self.mpc_qpos_log = []
         self.mpc_qvel_log = []
+        self.mpc_ctrl_log = []
+        self.time_plot_log = []
+        self.qpos_plot_log = []
+        self.qvel_plot_log = []
 
         self.time_hist = []
         self.joint_vel_hist = []
         self.target_joint_vel_hist = []
-        self.ee_vel_hist = []
+        self.ee_linvel_hist = []
+        self.ee_angvel_hist = []
 
         self.simulation_stop = False
 
-        self.mpc_ctrl_log = []
+        self.mpc_ctrl = []
         with open('precomputed_mpc_traj/interpolated_trajectory.csv', 'r') as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
-                ctrl_values = [float(x) for x in row['Ctrl'].split(',')]  
-                self.mpc_ctrl_log.append(ctrl_values[:6])  # Only the first 6 qpos values
+                ctrl_values = [float(x) for x in row['QPos'].split(',')]  
+                self.mpc_ctrl.append(ctrl_values[:6])  # Only the first 6 qpos values
 
-        self.mpc_ctrl_log = np.array(self.mpc_ctrl_log)
+        self.mpc_ctrl = np.array(self.mpc_ctrl)
 
     def update_motors_controller(self, model, active_ids, passive_ids, mode="position"):
         # Update the lists of active and passive motors
@@ -176,7 +180,7 @@ class FiniteStateMachine:
     def _final_prepare_for_flip(self, model, data, current_position):
         self.move_to_next_state = False
         self.final_flip_joint_angles = [-1.5923697502906031,-2.2355866024308724,2.702949141598393,-2.067142791964366,-1.572676790518878,-4.223297354370639e-09]                                                                                                               
-  
+
         # self.final_flip_joint_angles[0] = -np.pi/2
         # self.final_flip_joint_angles[-1] = 0
         # self.final_flip_joint_angles[-2] = -np.pi/2
@@ -184,10 +188,17 @@ class FiniteStateMachine:
 
         if np.linalg.norm(np.subtract(get_joint_angles(data), self.final_flip_joint_angles)) < 0.02:
             self.move_to_next_state = True
+            #print(f"Pinch pos: {data.sensor('pinch_pos').data.copy()} | Pinch quat: {data.sensor('pinch_quat').data.copy()}")
+            #print(f"QPos: {data.qpos.copy()} | QVel: {data.qvel.copy()}")
+            init_mpc_qpos = self.mpc_ctrl[self.mpc_timestep]
+            data.ctrl[:6] = init_mpc_qpos
             self.update_motors_controller(model,
                                     active_ids=[self.shoulder_pan_id, self.shoulder_lift_id, self.elbow_id, self.wrist_1_id, self.wrist_2_id, self.wrist_3_id],
                                     passive_ids=[],
-                                    mode="velocity")
+                                    mode="position")
+            print(f"Qpos: {data.qpos}")
+            print(f"Qvel: {data.qvel}")
+            print(f"Ctrl: {data.ctrl}")
             self.state = 'flip_block'
             #print("Qpos before flip: ", get_joint_angles(data))
             # with open("flip_data_log.txt", "a") as file:
@@ -202,13 +213,11 @@ class FiniteStateMachine:
         joint_velocities = np.array(get_joint_velocities(data)).flatten()
         self.joint_vel_hist.append(joint_velocities)
         
-        ee_velocity = data.sensor('pinch_linvel').data.copy()
-        self.ee_vel_hist.append(ee_velocity)
+        ee_linvel = data.sensor('pinch_linvel').data.copy()
+        ee_angvel = data.sensor('pinch_angvel').data.copy()
+        self.ee_linvel_hist.append(ee_linvel)
+        self.ee_angvel_hist.append(ee_angvel)
 
-        #print(get_joint_angles(data))
-        # self.time_log.append(data.time)
-        # self.qpos_log.append(get_joint_angles(data))
-        # self.qvel_log.append(get_joint_velocities(data))
 
         if self.has_gripper_opened == False:
             #gripper_close(data, clampness)
@@ -233,7 +242,9 @@ class FiniteStateMachine:
                 gripper_open(data)
                 self.has_gripper_opened = True
                 self.release_time = time
-                self.release_ee_velocity = ee_velocity 
+                self.release_ee_linvel = ee_linvel
+                self.release_ee_angvel = ee_angvel
+
 
                 self.update_motors_controller(model,
                                         active_ids=[],
@@ -261,53 +272,84 @@ class FiniteStateMachine:
                 #self.save_trajectory_to_csv_and_plot()
 
     def flip_block_mpc(self, model, data, time):
+        _, block_orientation = get_block_pose(model, data)
+        quat_desired_block = R.from_euler('xyz', [0, np.pi-2.0945, -3.14]).as_quat()
+        quat_current_block = np.array(data.sensor('block_quat').data.copy()) 
+        #quat_desired = np.array([-0.0001253, -0.31613082, -0.00038637, -0.94871552])
 
-        ee_velocity = get_ee_velocity(model, data)[0]
-        wrist_1_angle = get_specific_joint_angles(data, [self.wrist_1_id])[0]
+        quat_current_ee = np.array(data.sensor('pinch_quat').data.copy())
+        quat_offset = quat_distance (quat_current_block, quat_current_ee)
+        quat_dist = quat_distance(quat_current_block, quat_desired_block)
+
+        #print(f"Quat offset: {quat_offset} | Quat distance: {quat_dist}")
         
-        if self.has_gripper_opened == False:
-            if wrist_1_angle > -4.1544:
-                #print(self.mpc_timestep)
-                given_ctrl = self.mpc_ctrl_log[self.mpc_timestep]
-                #set_joint_states(data, [self.wrist_1_id], [-4.1544])
-                set_joint_states(data, self.active_motors_list, given_ctrl)
+        self.time_hist.append(time)
+        joint_velocities = np.array(get_joint_velocities(data)).flatten()
+        self.joint_vel_hist.append(joint_velocities)
+        ee_linvel = data.sensor('pinch_linvel').data.copy()
+        ee_angvel = data.sensor('pinch_angvel').data.copy()
+        self.ee_linvel_hist.append(ee_linvel)
+        self.ee_angvel_hist.append(ee_angvel)
+        
+        relative_quat = R.from_quat(quat_current_block) * R.from_quat(quat_current_ee).inv()
+        #print(relative_quat.as_euler('xyz', degrees=True))  # Relative orientation in degrees
 
-            else:
-                gripper_open(data)
-                print("Release wrist 1 angle: ", wrist_1_angle)
-                self.has_gripper_opened = True
-                self.release_time = time
-                self.release_ee_velocity = ee_velocity 
-                self.motor_angles_hold = get_specific_joint_angles(data, self.active_motors_list)
-                #print("Motor holds: ", self.motor_angles_hold)
 
-                print("Framepos: ", data.sensor('pinch_pos').data.copy())
-                print("Framelinvel: ", data.sensor('pinch_linvel').data.copy())
-                print("Frameangvel: ", data.sensor('pinch_angvel').data.copy())
+        #if block_orientation[1] > -1.042:
+        if self.mpc_timestep < len(self.mpc_ctrl) and quat_dist > 5e-3:
+            given_ctrl = self.mpc_ctrl[self.mpc_timestep]
+            data.ctrl[:6] = given_ctrl
+
+            # Log data at each time step
+            if not hasattr(self, 'csv_initialized'):
+                with open('mpc_log.csv', 'w', newline='') as csvfile:
+                    log_writer = csv.writer(csvfile)
+                    log_writer.writerow(['Time', 'Ctrl', 'QPos', 'QVel'])  # Write headers
+                self.csv_initialized = True  # Prevent rewriting headers
+
+            with open('mpc_log.csv', 'a', newline='') as csvfile:
+                log_writer = csv.writer(csvfile)
+                ctrl_str = ','.join(map(str, data.ctrl[:6].copy()))
+                qpos_str = ','.join(map(str, data.qpos[:6].copy()))
+                qvel_str = ','.join(map(str, data.qvel[:6].copy()))
+                log_writer.writerow([time, ctrl_str, qpos_str, qvel_str])
+
+            self.mpc_timestep += 1
 
         else:
-            set_joint_states(data, self.active_motors_list, self.motor_angles_hold)
+            gripper_open(data)
+            self.has_gripper_opened = True
+            self.release_time = time
+            self.release_ee_linvel = ee_linvel
+            self.release_ee_angvel = ee_angvel 
 
-            # if self.trigger_iteration > 50:
-            #     self.state = 'post_flip_block'
-            #     self.trigger_iteration = 0
-            #     self.update_motors_controller(model,
-            #                             active_ids=[self.wrist_1_id],
-            #                             passive_ids=[self.shoulder_pan_id, self.shoulder_lift_id, self.elbow_id, self.wrist_2_id, self.wrist_3_id],
-            #                             mode="position")
 
-            #     self.passive_motor_angles_hold = get_specific_joint_angles(data, self.passive_motors_list) 
+        # if self.has_gripper_opened == False:
+        #     # if block_orientation[1] > -1.04:
+        #     # #if data.qpos[3] < -4.5:
+        #     #     #print(self.mpc_timestep)
+        #     #     given_ctrl = self.mpc_ctrl_log[self.mpc_timestep]
+        #     #     #set_joint_states(data, [self.wrist_1_id], [-4.1544])
+        #     #     set_joint_states(data, self.active_motors_list, given_ctrl)
 
-        self.mpc_timestep += 1
- 
+        #     # else:
+        #     #     gripper_open(data)
+        #     #     print("Release wrist 1 angle: ", wrist_1_angle)
+        #     #     self.has_gripper_opened = True
+        #     #     self.release_time = time
+        #     #     self.release_ee_velocity = ee_velocity 
+        #     #     self.motor_angles_hold = get_specific_joint_angles(data, self.active_motors_list)
+        #     #     #print("Motor holds: ", self.motor_angles_hold)
+                
+
 
     def move_back(self, model, data, time):
         self.prev_ee_pose = self.current_ee_pose
         self.current_ee_pose = np.copy(get_ee_pose(model, data)[0])
-        self.ee_velocity = get_ee_velocity(model, data)[0]
-        self.ee_vel_hist.append(self.ee_velocity)
+        self.ee_linvel = data.sensor('pinch_linvel').data.copy()
+        self.ee_linvel_hist.append(self.ee_linvel)
         set_joint_states(data, self.active_motors_list, [np.pi])
 
-    def move_back_mpc(self):
-        print("TRIGGERED")
+    # def move_back_mpc(self):
+    #     print("TRIGGERED")
 

@@ -1,6 +1,80 @@
 <mujoco model="ur10e">
   <compiler angle="radian" autolimits="true"/>
 
+  <option integrator="implicitfast"/>
+
+  <default>
+    <default class="ur10e">
+      <material specular="0.5" shininess="0.25"/>
+      <joint axis="0 1 0" range="-6.28319 6.28319" armature="0.1"/>
+      <position ctrlrange="-6.2831 6.2831"/>
+      <general biastype="affine" ctrlrange="-6.2831 6.2831" gainprm="5000" biasprm="0 -5000 -500"/>
+      <default class="size4">
+        <joint damping="10"/>
+        <general forcerange="-330 330"/>
+      </default>
+      <default class="size3">
+        <joint damping="5"/>
+        <general forcerange="-150 150"/>
+        <default class="size3_limited">
+          <joint range="-3.1415 3.1415"/>
+          <general ctrlrange="-3.1415 3.1415"/>
+        </default>
+      </default>
+      <default class="size2">
+        <joint damping="2"/>
+        <general forcerange="-56 56"/>
+      </default>
+      <default class="size2_limited">
+        <joint damping="2"/>
+        <general forcerange="-28 28"/>
+      </default>
+      <default class="visual">
+        <geom type="mesh" contype="0" conaffinity="0" group="2"/>
+      </default>
+      <default class="collision">
+        <geom type="capsule" group="3"/>
+        <default class="eef_collision">
+          <geom type="cylinder"/>
+        </default>
+      </default>
+      <site size="0.001" rgba="0.5 0.5 0.5 0.3" group="4"/>
+    </default>
+    <default class="2f85">
+      <mesh scale="0.001 0.001 0.001"/>
+      <general biastype="affine"/>
+
+      <joint axis="1 0 0"/>
+      <default class="driver">
+        <joint range="0 0.8" armature="0.005" damping="0.1" solimplimit="0.95 0.99 0.001" solreflimit="0.005 1"/>
+      </default>
+      <default class="follower">
+        <joint range="-0.872664 0.872664" armature="0.001" pos="0 -0.018 0.0065" solimplimit="0.95 0.99 0.001" solreflimit="0.005 1"/>
+      </default>
+      <default class="spring_link">
+        <joint range="-0.29670597283 0.8" armature="0.001" stiffness="0.05" springref="2.62" damping="0.00125"/>
+      </default>
+      <default class="coupler">
+        <joint range="-1.57 0" armature="0.001" solimplimit="0.95 0.99 0.001" solreflimit="0.005 1"/>
+      </default>
+
+      <default class="visual_2f85">
+        <geom type="mesh" contype="0" conaffinity="0" group="2"/>
+      </default>
+      <default class="collision_2f85">
+        <geom type="mesh" group="3"/>
+        <default class="pad_box1">
+          <geom mass="0" type="box" pos="0 -0.0026 0.028125" size="0.011 0.004 0.009375" friction="0.7"
+            solimp="0.95 0.99 0.001" solref="0.004 1" priority="1" rgba="0.55 0.55 0.55 1"/>
+        </default>
+        <default class="pad_box2">
+          <geom mass="0" type="box" pos="0 -0.0026 0.009375" size="0.011 0.004 0.009375" friction="0.6"
+            solimp="0.95 0.99 0.001" solref="0.004 1" priority="1" rgba="0.45 0.45 0.45 1"/>
+        </default>
+      </default>
+    </default>
+  </default>
+
   <asset>
     <material class="ur10e" name="black" rgba="0.033 0.033 0.033 1"/>
     <material class="ur10e" name="jointgray" rgba="0.278 0.278 0.278 1"/>
@@ -97,7 +171,7 @@
                   <joint name="wrist_3_joint" class="size2"/>
                   <geom material="linkgray" mesh="wrist3" class="visual"/>
                   <geom class="eef_collision" pos="0 0.097 0" quat="1 1 0 0" size="0.046 0.02"/>
-                  <site name="attachment_site" pos="0 0.1 0" quat="-1 1 0 0"/>
+                  <!-- <site name="attachment_site" pos="0 0.1 0" quat="-1 1 0 0"/> -->
 
 		  <!-- Robotiq 2f85 Gripper -->
 		  <body name="base_mount" pos="0 0.1 0" quat="-1 1 0 0" childclass="2f85">
@@ -239,11 +313,19 @@
       gainprm="0.3137255 0 0" biasprm="0 -100 -10"/>
   </actuator>
 
-  <sensor>
-      <framepos name="pinch_pos" objtype="site" objname="pinch"/>
-      <framequat name="pinch_quat" objtype="site" objname="pinch"/>
-      <framelinvel name="pinch_linvel" objtype="site" objname="pinch"/>
-      <frameangvel name="pinch_angvel" objtype="site" objname="pinch"/>
-  </sensor>
+  <!-- <actuator>
+    <general name="shoulder_pan" joint="shoulder_pan_joint" biastype="affine" biasprm="0 0 -4.78"/>
+    <general name="shoulder_lift" joint="shoulder_lift_joint" biastype="affine" biasprm="0 0 -4.78"/>
+    <general name="elbow" joint="elbow_joint" biastype="affine" biasprm="0 0 -3.18"/>
+    <general name="wrist_1" joint="wrist_1_joint" biastype="affine" biasprm="0 0 -3.18"/>
+    <general name="wrist_2" joint="wrist_2_joint" biastype="affine" biasprm="0 0 -3.18"/>
+    <general name="wrist_3" joint="wrist_3_joint" biastype="affine" biasprm="0 0 -3.18"/>
+    <general class="2f85" name="fingers_actuator" tendon="split" forcerange="-5 5" ctrlrange="0 255"
+      gainprm="0.3137255 0 0" biasprm="0 -100 -10"/>
+  </actuator> -->
 
+
+  <!-- <keyframe> -->
+  <!--   <key name="home" qpos="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0" ctrl="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0"/> -->
+  <!-- </keyframe> -->
 </mujoco>

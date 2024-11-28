@@ -4,6 +4,7 @@ import numpy as np
 import mujoco
 import mujoco.viewer
 import argparse
+import inspect
 
 import matplotlib.pyplot as plt
 from datetime import datetime
@@ -43,6 +44,7 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                                         noslip_iterations=noslip_iterations, noslip_tolerance=noslip_tolerance,impratio=impratio, 
                                         pad_friction=pad_friction, pad_solimp=pad_solimp, pad_solref=pad_solref)
         model = mujoco.MjModel.from_xml_string(world_xml_model)
+        #model.opt.timestep = 0.008
         print(f"Simulation timestep: {model.opt.timestep}")
         data = mujoco.MjData(model)
         contact = mujoco.MjContact()
@@ -70,7 +72,13 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
         save_csv_iteration = 0
         debug_iteration = 0
 
-        print(model.geom(0).name, model.geom(58).name, model.geom(55).name, model.geom(42).name)
+        release_time = None
+        touch_ground_time = None
+        block_touch_ground_position = None
+        block_touch_ground_orientation = None
+        block_touch_ground_height = None
+        block_touch_ground_velocity = None
+
         while has_block_steady == False and data.time < 8:
             #print(data.contact.geom1, data.contact.geom2)
             time = data.time
@@ -110,34 +118,33 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                 time_hist.append(time)
 
                 if fsm.has_gripper_opened == False:
-                    fsm.flip_block(model, data, time, ee_flip_target_velocity)
-                    # fsm.flip_block_mpc(model, data, time)
+                    #fsm.flip_block(model, data, time, ee_flip_target_velocity)
+                    fsm.flip_block_mpc(model, data, time)
 #===========================================================================================================
 
                 # After flipping block
                 else:
+                    # When no contact at all
                     if has_block_released(data) and trigger_iteration == 0:
                         release_time = time
                         block_release_pos, block_release_orientation = get_block_pose(model, data, quat=True)
                         _, block_release_euler = get_block_pose(model, data)
                         block_release_transvel = data.sensor('block_linvel').data.copy()
                         block_release_angvel = data.sensor('block_angvel').data.copy()
-
-                        print(release_time)
+                        renderer.take_screenshot(time)
                             
                         trigger_iteration += 1 
                     # Moving back
                     if fsm.state == 'post_flip_block':
                         fsm.move_back(model, data, time)
-                        #fsm.move_back_mpc()
                         if screenshot_iteration == 0: 
                             if use_random_parameters is not True:
                                 renderer.take_screenshot(time)
                             screenshot_iteration += 1
                     # Holding position
                     else:
-                        fsm.flip_block(model, data, time, ee_flip_target_velocity)
-                        #fsm.flip_block_mpc(model, data, time)
+                        #fsm.flip_block(model, data, time, ee_flip_target_velocity)
+                        fsm.flip_block_mpc(model, data, time)
 
                     # To log the release state of the block
                     if trigger_iteration == 1:
@@ -174,11 +181,14 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                             
                             trigger_iteration += 1
 
+
         if use_random_parameters is not True:
+            source_lines, line_number = inspect.getsourcelines(log_simulation_results)
+            print(f"Location of logsim results: {inspect.getfile(log_simulation_results)} | {line_number}")
             log_simulation_results(
                 i=i,
                 release_time=release_time,
-                release_ee_velocity=fsm.release_ee_velocity,
+                fsm=fsm,
                 block_release_pos=block_release_pos,
                 block_release_orientation=block_release_euler,
                 block_release_transvel=block_release_transvel,
@@ -187,6 +197,7 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                 block_touch_ground_position=block_touch_ground_position,
                 block_touch_ground_orientation=block_touch_ground_orientation
             )
+            
 
             time_discrepancy_percentage, angle_discrepancy_percentage, height_discrepancy_percentage, landing_velocity_discrepancy_percentage = perform_discrepancy_analysis(
                 release_time=release_time, 
@@ -215,15 +226,16 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
             angle_discrepancies.append(angle_discrepancy_percentage)
             height_discrepancies.append(height_discrepancy_percentage)
             landing_velocities_discrepancies.append(landing_velocity_discrepancy_percentage)
-            block_release_ver_velocities.append(fsm.block_release_transvel[2])
+            block_release_ver_velocities.append(block_release_transvel[2])
 
             renderer.close()
+
 
         if has_block_steady:
             print("Position when the block landed steadily: ", block_steady_position) 
             print("Orientation when the block landed steadily: ", block_steady_orientation)
-            iteration_result = {"current_config": current_config, "block_release_transvel": fsm.block_release_transvel.tolist(), 
-                    "fsm_release_ee_velocity": fsm.release_ee_velocity.tolist(), "has_block_steady": has_block_steady}
+            iteration_result = {"current_config": current_config, "block_release_transvel": block_release_transvel.tolist(), 
+                    "fsm_release_ee_velocity": fsm.release_ee_linvel.tolist(), "has_block_steady": has_block_steady}
             return iteration_result
             
         else:

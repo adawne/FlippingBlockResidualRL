@@ -5,6 +5,18 @@ import csv
 
 from scipy.spatial.transform import Rotation as R
 
+def quat_distance(q1, q2):
+    dot_product = np.abs(np.dot(q1, q2))
+    return 1.0 - dot_product
+
+def quat_distance_new(q1, q2):
+    dot_product = np.abs(np.dot(q1, q2))
+    # Ensure the dot product is within valid bounds to prevent numerical errors
+    dot_product = np.clip(dot_product, -1.0, 1.0)
+    angle = 2 * np.arccos(dot_product)
+    return angle  # Angle in radians
+
+
 class ActuatorController:
     def __init__(self, actuator_ids) -> None:
         self.dyn = np.array([1, 0, 0])
@@ -77,7 +89,7 @@ def get_ee_pose(model, data):
     end_effector_position = data.site('attachment_site').xpos
     end_effector_orientation_matrix = data.site('attachment_site').xmat.reshape(3, 3)
     
-    end_effector_orientation = R.from_matrix(end_effector_orientation_matrix).as_euler('zyx')
+    end_effector_orientation = R.from_matrix(end_effector_orientation_matrix).as_euler('xyz')
     
     return end_effector_position, end_effector_orientation
 
@@ -92,12 +104,11 @@ def get_ee_velocity(model, data, local_frame=False):
 
 def get_block_pose(model, data, block_name='block_0', quat=False):
     block_id = data.body(block_name).id
-    
     block_position = data.body(block_id).xpos.copy()
 
     if not quat:
         block_orientation_matrix = data.body(block_id).xmat.reshape(3, 3)
-        block_orientation = R.from_matrix(block_orientation_matrix).as_euler('zyx')
+        block_orientation = R.from_matrix(block_orientation_matrix).as_euler('xyz')
     else:
         block_orientation = data.body(block_id).xquat.copy()
 
@@ -136,7 +147,7 @@ def gripper_open(data):
 def gripper_close(data):
     data.ctrl[6] = 225
 
-def diffik(model, data, target_position, target_orientation_euler):
+def diffik(model, data, target_position, target_orientation_euler, site="attachment_site"):
     target_orientation = R.from_euler('xyz', target_orientation_euler).as_quat()
 
     # Integration timestep in seconds. This corresponds to the amount of time the joint
@@ -185,7 +196,7 @@ def diffik(model, data, target_position, target_orientation_euler):
     error_quat = np.zeros(4)
 
     # Position error.
-    site_id = model.site("attachment_site").id
+    site_id = model.site(site).id
     error_pos[:] = target_position - data.site(site_id).xpos
     #error_pos[:] = data.mocap_pos[mocap_id] - data.site(site_id).xpos
 
@@ -226,11 +237,23 @@ def generate_trajectory(start, end):
     
     return points
 
-def has_flipped(data):
-    if (data.geom("orange_subbox").xpos[2] + 1e-2) < data.geom("blue_subbox").xpos[2]:
-        return True
-    else:
-        return False
+def has_block_flipped(initial_quat, current_quat, tolerance_angle=5):
+    initial_rot = R.from_quat(initial_quat)
+    current_rot = R.from_quat(current_quat)
+    relative_rotation = current_rot * initial_rot.inv()
+    rotation_angle = relative_rotation.magnitude()
+    rotation_axis = relative_rotation.as_rotvec()
+    rotation_angle_degrees = np.degrees(rotation_angle)
+    if 180 - tolerance_angle <= rotation_angle_degrees <= 180 + tolerance_angle:
+        normalized_axis = rotation_axis / np.linalg.norm(rotation_axis)
+        if np.isclose(abs(normalized_axis[0]), 1, atol=0.1):
+            return True
+        elif np.isclose(abs(normalized_axis[1]), 1, atol=0.1):
+            return True
+        elif np.isclose(abs(normalized_axis[2]), 1, atol=0.1):
+            return True
+    return False
+
 
 def has_rotated(orientation_history):
     initial_orientation = R.from_euler('zyx', orientation_history[0])
@@ -303,24 +326,43 @@ def has_block_released(data):
 
     return True  
 
-def has_hit_robot(data, block_contact_hist):
+def has_block_hit_floor(data):
     """
-    Checks if any of the contacts in the history involve the robot.
+    Checks if the block has made contact with the floor.
+    Returns True if a collision is detected between the block and the floor, False otherwise.
     """
-    blue_subbox_id = data.geom("blue_subbox").id
-    orange_subbox_id = data.geom("orange_subbox").id
+    block_id = data.geom("blue_subbox").id  # Assuming "blue_subbox" represents the block
     floor_id = data.geom("floor").id
 
-    for contact in block_contact_hist:
-        geom1_id, geom2_id = contact
-        
-        if (geom1_id not in [blue_subbox_id, orange_subbox_id, floor_id] and
-            geom2_id in [blue_subbox_id, orange_subbox_id]) or \
-           (geom2_id not in [blue_subbox_id, orange_subbox_id, floor_id] and
-            geom1_id in [blue_subbox_id, orange_subbox_id]):
+    for i in range(data.ncon):
+        contact = data.contact[i]
+        geom1_id = contact.geom1
+        geom2_id = contact.geom2
+
+        # Check if the block is in contact with the floor
+        if (geom1_id == block_id and geom2_id == floor_id) or \
+           (geom2_id == block_id and geom1_id == floor_id):
             return True
 
     return False
+
+
+def has_block_hit_robot(data):
+    blue_subbox_id = data.geom("blue_subbox").id
+    floor_id = data.geom("floor").id
+
+    for i in range(data.ncon):
+        contact = data.contact[i]
+        geom1_id = contact.geom1
+        geom2_id = contact.geom2
+
+        if (geom1_id not in {blue_subbox_id, floor_id} and
+            geom2_id == blue_subbox_id) or \
+           (geom2_id not in {blue_subbox_id, floor_id} and
+            geom1_id == blue_subbox_id):
+            return True
+
+    return False         
 
 def is_block_declining(block_height_hist):
     for i in range(1, len(block_height_hist)):
