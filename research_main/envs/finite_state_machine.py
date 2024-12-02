@@ -199,6 +199,7 @@ class FiniteStateMachine:
             print(f"Qpos: {data.qpos}")
             print(f"Qvel: {data.qvel}")
             print(f"Ctrl: {data.ctrl}")
+            print(f"Block height: {get_block_pose(model, data)[0]}")
             self.state = 'flip_block'
             #print("Qpos before flip: ", get_joint_angles(data))
             # with open("flip_data_log.txt", "a") as file:

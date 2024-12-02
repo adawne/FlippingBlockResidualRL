@@ -1,3 +1,5 @@
+import research_main
+
 import argparse
 import numpy as np
 import torch
@@ -16,7 +18,7 @@ num_eval_episodes = 4
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", type=str, default="Ant-v4")
+    parser.add_argument("--task", type=str, default="research_main/FlipBlock-v0")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--hidden-sizes", type=int, nargs="*", default=[256, 256, 256])
     parser.add_argument("--actor-lr", type=float, default=1e-3)
@@ -27,7 +29,7 @@ def get_args():
     parser.add_argument("--n-step", type=int, default=1)
     parser.add_argument("--test-num", type=int, default=10)
     parser.add_argument("--device", type=str, default="cpu")
-    parser.add_argument("--load-path", type=str, default="log/Ant-v4/policy.pth")
+    parser.add_argument("--load-path", type=str, default="log/research_main/FlipBlock-v0/policy.pth")
     return parser.parse_args()
 
 def evaluate_sac(args=get_args()):
@@ -41,16 +43,16 @@ def evaluate_sac(args=get_args()):
     )
 
 
-    env = gym.make("Ant-v4", render_mode="rgb_array")  # replace with your environment
-    env = RecordVideo(env, video_folder="agent_eval", name_prefix="eval",
-                    episode_trigger=lambda x: True)
-    env = RecordEpisodeStatistics(env, buffer_length=num_eval_episodes)
+    env = gym.make(args.task, render_mode="human")  
+    # env = RecordVideo(env, video_folder="agent_eval", name_prefix="eval",
+    #                 episode_trigger=lambda x: True)
+    # env = RecordEpisodeStatistics(env, buffer_length=num_eval_episodes)
 
-    rec_env = SubprocVectorEnv(
-        [
-            lambda: env
-        ]
-    )
+    # rec_env = SubprocVectorEnv(
+    #     [
+    #         lambda: env
+    #     ]
+    # )
     args.state_shape = env.observation_space.shape or env.observation_space.n
     args.action_shape = env.action_space.shape or env.action_space.n
 
@@ -104,13 +106,14 @@ def evaluate_sac(args=get_args()):
         action_space=env.action_space,
     )
 
-    policy.load_state_dict(torch.load(args.load_path))
+    policy.load_state_dict(torch.load(args.load_path, map_location=torch.device('cpu')))
+
 
     #test_envs.seed(args.seed)
-    rec_env.seed(args.seed)
+    # rec_env.seed(args.seed)
 
     #test_collector = Collector(policy, test_envs)
-    test_collector = Collector(policy, rec_env)
+    test_collector = Collector(policy, env)
     
     test_collector.reset()
     collector_stats = test_collector.collect(n_episode=args.test_num)

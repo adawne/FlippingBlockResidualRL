@@ -176,31 +176,34 @@ class URFlipBlockEnv(gym.Env):
         if self.has_gripper_opened:
             self._wait_for_block_to_land()
 
-
-        reward, terminated = (self._compute_reward() if not (self.has_block_steady or not self.valid_flip) else (reward, True))
+        # FIXME: Logic kalo gripper dah kebuka dan balok kena robot harus diapain keknya kondisional valid_flip gaperlu, diganti aja sama block touch robto
+        reward, terminated = self._compute_reward()
 
         observation = self._get_obs()
         info = self._get_info()
         if self.render_mode == "human":
             self.render()
 
+        print(f"Terminated: {terminated} | Block steady: {self.has_block_steady} | Valid Flip: {self.valid_flip}")
+
         return observation, reward, terminated, False, info
 
 
     def _wait_for_block_to_land(self):
-        while not has_block_landed(self.data):
+        while not self.has_block_steady:
             mujoco.mj_step(self.model, self.data)
             if has_block_released(self.data):
                 self.has_block_released = True
-            if has_block_hit_robot(self.data):
-                self.valid_flip = False
-                break
+                if has_block_hit_robot(self.data):
+                    self.valid_flip = False
+                    break
             if has_block_landed(self.data):
                 if self.trigger_iteration == 0:
                     self.has_block_landed = True
                     self.block_landing_quat = get_block_pose(self.model, self.data, quat=True)[1]
                     self.trigger_iteration += 1
             if np.linalg.norm(self.data.sensor('block_linvel').data.copy()) < 0.001 and np.linalg.norm(self.data.sensor('block_angvel').data.copy()) < 0.001:
+                self.block_steady_quat = get_block_pose(self.model, self.data, quat=True)[1]
                 self.has_block_steady = True
 
 
@@ -208,41 +211,52 @@ class URFlipBlockEnv(gym.Env):
         block_height = self.block_position[2]
         desired_block_landing_quat = [0, 0, -1, 0]
 
-        if not self.has_gripper_opened and has_block_hit_floor(self.data):
-            #print("Block hit floor before flipping")
-            return -20, True
+        if not self.has_gripper_opened: 
+            if has_block_hit_floor(self.data):
+                print("Block hit floor before flipping")
+                return -20, True
+            
+            elif self._is_close_to_desired_state():
+                return 20, False
 
-        if self.has_block_released:
-            if self.has_block_hit_robot:
-                #print("Block hit robot")
+            else:
+                position_error = abs(block_height - self.desired_release_state['h_0'])
+                translational_velocity_error = np.linalg.norm(
+                    self.block_linvel - [self.desired_release_state['v_x0'], self.desired_release_state['v_y0'], self.desired_release_state['v_z0']]
+                )
+                angular_velocity_error = np.linalg.norm(
+                    self.block_angvel - [self.desired_release_state['omega_x0'], self.desired_release_state['omega_y0'], self.desired_release_state['omega_z0']]
+                )
+                desired_quat = R.from_euler(
+                    'xyz', [self.desired_release_state['theta_x0'], self.desired_release_state['theta_y0'], self.desired_release_state['theta_z0']]
+                ).as_quat()
+                orientation_error = quat_distance_new(self.block_quat, desired_quat)
+
+                progress_reward = max(0, 1 - (position_error + translational_velocity_error))
+                reward = (
+                    0.5 * progress_reward
+                    - 0.1 * position_error
+                    - 0.1 * translational_velocity_error
+                    - 0.1 * angular_velocity_error
+                    - 0.1 * orientation_error
+                )
+                return reward, False            
+
+        else:
+            # Blocks hit robot
+            if not self.valid_flip:
+                print("Block hit robot")
                 return -10, True
-
-            if self.has_block_steady:
+            
+            else:
                 if has_block_flipped(self.initial_block_quat, self.block_steady_quat):
+                    print("Block flipped")
                     return 50, True
+                else:
+                    orientation_error = quat_distance_new(desired_block_landing_quat, self.block_landing_quat)
+                    print("Block orientation error")
+                    return -orientation_error, True
 
-                orientation_error = quat_distance_new(desired_block_landing_quat, self.block_landing_quat)
-                return -orientation_error, True
-
-        position_error = abs(block_height - self.desired_release_state['h_0'])
-        translational_velocity_error = np.linalg.norm(
-            self.block_linvel - [self.desired_release_state['v_x0'], self.desired_release_state['v_y0'], self.desired_release_state['v_z0']]
-        )
-        angular_velocity_error = np.linalg.norm(
-            self.block_angvel - [self.desired_release_state['omega_x0'], self.desired_release_state['omega_y0'], self.desired_release_state['omega_z0']]
-        )
-        desired_quat = R.from_euler(
-            'xyz', [self.desired_release_state['theta_x0'], self.desired_release_state['theta_y0'], self.desired_release_state['theta_z0']]
-        ).as_quat()
-        orientation_error = quat_distance_new(self.block_quat, desired_quat)
-
-        reward = (
-            -2.0 * position_error
-            -2.0 * translational_velocity_error
-            -2.0 * angular_velocity_error
-            -3.0 * orientation_error
-        )
-        return reward, False
 
     def _get_obs(self): 
         joint_pos = self.data.qpos[:6].copy() 
