@@ -176,7 +176,6 @@ class URFlipBlockEnv(gym.Env):
         if self.has_gripper_opened:
             self._wait_for_block_to_land()
 
-        # FIXME: Logic kalo gripper dah kebuka dan balok kena robot harus diapain keknya kondisional valid_flip gaperlu, diganti aja sama block touch robto
         reward, terminated = self._compute_reward()
 
         observation = self._get_obs()

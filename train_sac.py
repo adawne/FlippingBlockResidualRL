@@ -161,7 +161,7 @@ def train_sac(args: argparse.Namespace = get_args()) -> None:
     logger.load(writer)
 
     def save_best_fn(policy: BasePolicy) -> None:
-        torch.save(policy.state_dict(), os.path.join(log_path, "policy.pth"))
+        torch.save(policy.state_dict(), os.path.join(log_path, "best_policy.pth"))
 
     if not args.watch:
         # trainer
@@ -182,21 +182,7 @@ def train_sac(args: argparse.Namespace = get_args()) -> None:
         pprint.pprint(result)
 
     #torch.save(policy.state_dict(), "Catching_SAC.pth")
-    torch.save(policy.state_dict(), "mujoco_test.pth")
-
-    if __name__ == "__main__":
-        # env = DummyVectorEnv([lambda: gym.make("research_main/CatchBlock-v0")])
-        # policy.load_state_dict(torch.load('Catching_SAC.pth'))
-        
-        policy.load_state_dict(torch.load('mujoco_test.pth'))
-        
-        policy.eval()
-        #collector = Collector(policy, env)
-        
-        collector = Collector(policy, test_envs)
-        result = collector.collect(n_episode=args.test_num)
-        rews, lens = result.returns, result.lens
-        print(f"Final reward: {rews.mean()}, length: {lens.mean()}")
+    torch.save(policy.state_dict(), "final_policy.pth")
 
 
 if __name__ == "__main__":
