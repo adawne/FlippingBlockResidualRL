@@ -7,7 +7,7 @@ from gymnasium.utils.env_checker import check_env
 
 
 def manual_test():
-    env = gym.make("research_main/FlipBlock-v0", render_mode="human")
+    env = gym.make("research_main/FlipBlock-v0")
     # env = RecordVideo(env, video_folder="agent_eval", name_prefix="eval",
     #                 episode_trigger=lambda x: True)
     # env = RecordEpisodeStatistics(env)
@@ -47,18 +47,18 @@ def manual_test():
 
 
 if __name__ == "__main__":
-    manual_test()
+    # manual_test()
 
-    #env = gym.make("research_main/FlipBlock-v0")
+    env = gym.make("research_main/FlipBlock-v0")
     # env = RescaleAction(env, min_action=-1, max_action=1)
     # env = NormalizeObservation(env)
     # env = NormalizeReward(env, gamma=0.99)
 
-    # action_shape = env.action_space.shape or env.action_space.n
-    # max_action = env.action_space.high
-    # min_action = env.action_space.low
+    action_shape = env.action_space.shape or env.action_space.n
+    max_action = env.action_space.high
+    min_action = env.action_space.low
 
-    # from gymnasium.utils.env_checker import check_env
-    # check_env(env.unwrapped, skip_render_check=False)
+    from gymnasium.utils.env_checker import check_env
+    check_env(env.unwrapped, skip_render_check=True)
 
     # print(action_shape, max_action, min_action)

@@ -272,14 +272,14 @@ class FiniteStateMachine:
                 self.passive_motor_angles_hold = get_specific_joint_angles(data, self.passive_motors_list)           
                 #self.save_trajectory_to_csv_and_plot()
 
-    def flip_block_mpc(self, model, data, time):
+    def flip_block_mpc(self, model, data, time, frameskip=1):
+
         _, block_orientation = get_block_pose(model, data)
         quat_desired_block = R.from_euler('xyz', [0, np.pi-2.0945, -3.14]).as_quat()
         quat_current_block = np.array(data.sensor('block_quat').data.copy()) 
         #quat_desired = np.array([-0.0001253, -0.31613082, -0.00038637, -0.94871552])
 
         quat_current_ee = np.array(data.sensor('pinch_quat').data.copy())
-        quat_offset = quat_distance (quat_current_block, quat_current_ee)
         quat_dist = quat_distance(quat_current_block, quat_desired_block)
 
         #print(f"Quat offset: {quat_offset} | Quat distance: {quat_dist}")
@@ -295,11 +295,14 @@ class FiniteStateMachine:
         relative_quat = R.from_quat(quat_current_block) * R.from_quat(quat_current_ee).inv()
         #print(relative_quat.as_euler('xyz', degrees=True))  # Relative orientation in degrees
 
-
+        if self.mpc_timestep <= 105:
         #if block_orientation[1] > -1.042:
-        if self.mpc_timestep < len(self.mpc_ctrl) and quat_dist > 5e-3:
+        #if self.mpc_timestep < len(self.mpc_ctrl) and quat_dist > 5e-3:
             given_ctrl = self.mpc_ctrl[self.mpc_timestep]
-            data.ctrl[:6] = given_ctrl
+            #data.ctrl[[0, 4, 5]] = [-1.58, -np.pi/2, 0]
+            #data.ctrl[[1, 2, 3]] = [-2 * np.pi, -3.01, -2.06]
+            #data.ctrl[:6] = given_ctrl
+            print(self.mpc_timestep, data.qpos[[1, 2, 3]].copy())
 
             # Log data at each time step
             if not hasattr(self, 'csv_initialized'):
@@ -315,7 +318,7 @@ class FiniteStateMachine:
                 qvel_str = ','.join(map(str, data.qvel[:6].copy()))
                 log_writer.writerow([time, ctrl_str, qpos_str, qvel_str])
 
-            self.mpc_timestep += 1
+            self.mpc_timestep += frameskip
 
         else:
             gripper_open(data)

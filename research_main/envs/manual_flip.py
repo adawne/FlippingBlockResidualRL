@@ -78,11 +78,12 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
         block_touch_ground_orientation = None
         block_touch_ground_height = None
         block_touch_ground_velocity = None
+        frameskip = 5
 
         while has_block_steady == False and data.time < 8:
             #print(data.contact.geom1, data.contact.geom2)
             time = data.time
-            mujoco.mj_step(model, data)
+            mujoco.mj_step(model, data, nstep = frameskip)
                 
             if use_random_parameters is not True:
                 renderer.render_frame(time)
@@ -119,7 +120,7 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
 
                 if fsm.has_gripper_opened == False:
                     #fsm.flip_block(model, data, time, ee_flip_target_velocity)
-                    fsm.flip_block_mpc(model, data, time)
+                    fsm.flip_block_mpc(model, data, time, frameskip)
 #===========================================================================================================
 
                 # After flipping block
@@ -144,7 +145,7 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                     # Holding position
                     else:
                         #fsm.flip_block(model, data, time, ee_flip_target_velocity)
-                        fsm.flip_block_mpc(model, data, time)
+                        fsm.flip_block_mpc(model, data, time, frameskip)
 
                     # To log the release state of the block
                     if trigger_iteration == 1:

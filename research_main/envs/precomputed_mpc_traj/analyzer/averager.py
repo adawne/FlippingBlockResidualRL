@@ -49,6 +49,12 @@ def calculate_average_delta(file1, file2):
 
 # Define the files
 mpc_file = '../interpolated_trajectory.csv'  # Replace with actual MPC file
+# approach_files = {
+#     'Ctrl': 'Ctrl/mpc_log.csv',  # Replace with actual file
+#     'QPos': 'QPos/mpc_log.csv',  # Replace with actual file
+#     'QVel': 'QVel/mpc_log.csv',  # Replace with actual file
+# }
+
 approach_files = {
     'Ctrl': 'Ctrl/mpc_log.csv',  # Replace with actual file
     'QPos': 'QPos/mpc_log.csv',  # Replace with actual file
