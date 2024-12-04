@@ -354,8 +354,8 @@ class URFlipBlockEnv(gym.Env):
 
 
 # if __name__ == "__main__":
-#     # manual_test()
+#     manual_test()
 
-#     env = URFlipBlockEnv(render_mode='human')
-#     check_env(env, skip_render_check=False)
+    # env = URFlipBlockEnv(render_mode='human')
+    # check_env(env, skip_render_check=False)
 
