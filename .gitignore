@@ -17,3 +17,6 @@ env_test/assets_ur10e
 env_test/mujoco_menagerie
 env_test/outputs mujoco test
 env_test/outputs standalone
+policy results/
+research_main/envs/mpc_log.csv
+research_main/envs/RL_log.csv

@@ -78,7 +78,7 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
         block_touch_ground_orientation = None
         block_touch_ground_height = None
         block_touch_ground_velocity = None
-        frameskip = 5
+        frameskip = 1
 
         while has_block_steady == False and data.time < 8:
             #print(data.contact.geom1, data.contact.geom2)
@@ -184,8 +184,6 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
 
 
         if use_random_parameters is not True:
-            source_lines, line_number = inspect.getsourcelines(log_simulation_results)
-            print(f"Location of logsim results: {inspect.getfile(log_simulation_results)} | {line_number}")
             log_simulation_results(
                 i=i,
                 release_time=release_time,

@@ -151,6 +151,9 @@ class URFlipBlockEnv(gym.Env):
         self.block_quat = self.data.sensor('block_quat').data.copy()
         self.block_position, _ = get_block_pose(self.model, self.data)
 
+        self.RL_actions = [] 
+        self.csv_file_path = "RL_log.csv" 
+
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
@@ -183,7 +186,7 @@ class URFlipBlockEnv(gym.Env):
     def step(self, action):
         reward = 0
         terminated = False
-        frame_skip = 5
+        frame_skip = 1
 
         self.block_linvel = self.data.sensor('block_linvel').data.copy()
         self.block_angvel = self.data.sensor('block_angvel').data.copy()
@@ -207,6 +210,7 @@ class URFlipBlockEnv(gym.Env):
         self.data.ctrl[self.passive_motors_list] = self.fixed_qpos_values
         self.data.ctrl[self.active_motors_list] = final_action
 
+        self.RL_actions.append(self.data.qpos[:6].copy())
         mujoco.mj_step(self.model, self.data, nstep=frame_skip)
 
         reward, terminated = self._compute_reward()
@@ -216,7 +220,20 @@ class URFlipBlockEnv(gym.Env):
         if self.render_mode == "human":
             self.render()
 
+        print("="*25)
+        print({
+            "ee_height_residual": info.get("ee_height_residual"),
+            "translational_velocity_residual": info.get("translational_velocity_residual"),
+            "angular_velocity_residual": info.get("angular_velocity_residual"),
+            "orientation_residual": info.get("orientation_residual"),
+        })
+        print("="*25)
+
+        if terminated:
+            self._save_to_csv()
+
         return observation, reward, terminated, False, info
+
 
 
     def _compute_reward(self):
@@ -231,11 +248,11 @@ class URFlipBlockEnv(gym.Env):
 
         if self.use_qpos:
             if np.any(active_qvel < -qvel_limits) or np.any(active_qvel > qvel_limits):
-                # print("Joint velocity limit exceeded")
+                #print("Joint velocity limit exceeded")
                 return -20, True
 
         if self._is_close_to_desired_state():
-            # print("Close to desired state")
+            #print("Close to desired state")
             return 20, True
 
         position_error = abs(block_height - self.desired_release_state['h_0'])
@@ -258,14 +275,14 @@ class URFlipBlockEnv(gym.Env):
             - 0.1 * angular_velocity_error
             - 0.1 * orientation_error
         )
-        # print("Discrepancy between desired state and current state", progress_reward, reward)
+        #print("Discrepancy between desired state and current state", progress_reward, reward)
 
         if self.use_mpc and self.mpc_timestep >= len(self.mpc_nominal_traj):
-            # print("MPC Timestep or angle pass")
+            #print("MPC Timestep")
             return reward, True 
         
         if quat_dist < 5e-3:
-            # print("Angle Pass")
+            #print("Angle Pass")
             return reward, True
 
         return reward, False
@@ -352,6 +369,13 @@ class URFlipBlockEnv(gym.Env):
         
     def seed(self, seed):
         np.random.seed(seed)
+
+    def _save_to_csv(self):
+        with open(self.csv_file_path, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["Ctrl_0", "Ctrl_1", "Ctrl_2", "Ctrl_3", "Ctrl_4", "Ctrl_5"])  # Header
+            writer.writerows(self.RL_actions)
+        print(f"Actions saved to {self.csv_file_path}")
 
 # def manual_test():
 #     env = URFlipBlockEnv(render_mode='human')  # Initialize the environment

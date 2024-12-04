@@ -63,9 +63,18 @@ class FiniteStateMachine:
             reader = csv.DictReader(csvfile)
             for row in reader:
                 ctrl_values = [float(x) for x in row['QPos'].split(',')]  
-                self.mpc_ctrl.append(ctrl_values[:6])  # Only the first 6 qpos values
+                self.mpc_ctrl.append(ctrl_values[:6])  
 
         self.mpc_ctrl = np.array(self.mpc_ctrl)
+
+        self.RL_ctrl = []
+        with open('RL_log.csv', 'r') as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                ctrl_values = [float(row[f"Ctrl_{i}"]) for i in range(6)] 
+                self.RL_ctrl.append(ctrl_values)
+        
+        self.RL_ctrl = np.array(self.RL_ctrl)
 
     def update_motors_controller(self, model, active_ids, passive_ids, active_mode="position", passive_mode="position"):
 
@@ -289,9 +298,9 @@ class FiniteStateMachine:
         quat_current_ee = np.array(data.sensor('pinch_quat').data.copy())
         quat_dist = quat_distance(quat_current_block, quat_desired_block)
 
-        if has_block_hit_floor(data):
-            print(f"Hit floor: {self.mpc_timestep}")
-            self.simulation_stop = True
+        # if has_block_hit_floor(data):
+        #     print(f"Hit floor: {self.mpc_timestep}")
+        #     self.simulation_stop = True
 
         #print(f"Quat offset: {quat_offset} | Quat distance: {quat_dist}")
         
@@ -306,15 +315,14 @@ class FiniteStateMachine:
         relative_quat = R.from_quat(quat_current_block) * R.from_quat(quat_current_ee).inv()
         #print(relative_quat.as_euler('xyz', degrees=True))  # Relative orientation in degrees
 
-        if self.mpc_timestep <= 100:
         #if block_orientation[1] > -1.042:
-        #if self.mpc_timestep < len(self.mpc_ctrl) and quat_dist > 5e-3:
-            given_ctrl = self.mpc_ctrl[self.mpc_timestep]
-            data.ctrl[[0, 4, 5]] = [-1.58, -np.pi/2, 0]
+        if self.mpc_timestep < len(self.RL_ctrl) and quat_dist > 5e-3:
+            given_ctrl = self.RL_ctrl[self.mpc_timestep]
+            #data.ctrl[[0, 4, 5]] = [-1.58, -np.pi/2, 0]
             #data.ctrl[[1, 2, 3]] = given_ctrl[[1, 2, 3]]
-            data.ctrl[[1, 2, 3]] = [-2*np.pi, -np.pi, -2*np.pi]
-            #data.ctrl[:6] = given_ctrl
-            print(self.mpc_timestep, data.qpos[[1, 2, 3]].copy(), data.ctrl[:6].copy())
+            #data.ctrl[[1, 2, 3]] = [-2*np.pi, -np.pi, -2*np.pi]
+            data.ctrl[:6] = given_ctrl
+            #print(self.mpc_timestep, data.qpos[[1, 2, 3]].copy(), data.ctrl[:6].copy())
 
             # Log data at each time step
             if not hasattr(self, 'csv_initialized'):
