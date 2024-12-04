@@ -152,7 +152,7 @@ def test_td3(args: argparse.Namespace = get_args()) -> None:
     # logger
     logger = WandbLogger(
         save_interval=10,
-        project='runtest',
+        project='FlipBlock-v0',
         config=args,
     )
 

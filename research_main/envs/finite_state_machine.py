@@ -67,8 +67,8 @@ class FiniteStateMachine:
 
         self.mpc_ctrl = np.array(self.mpc_ctrl)
 
-    def update_motors_controller(self, model, active_ids, passive_ids, mode="position"):
-        # Update the lists of active and passive motors
+    def update_motors_controller(self, model, active_ids, passive_ids, active_mode="position", passive_mode="position"):
+
         self.active_motors_list = active_ids
         self.passive_motors_list = passive_ids
 
@@ -76,13 +76,20 @@ class FiniteStateMachine:
         self.active_motors = ActuatorController(self.active_motors_list)
         self.passive_motors = ActuatorController(self.passive_motors_list)
 
-        # Switch the controllers based on the mode
-        if mode == "position":
+        if active_mode == "position":
             self.active_motors.switch_to_position_controller(model)
-            self.passive_motors.switch_to_position_controller(model)
-        elif mode == "velocity":
+        elif active_mode == "velocity":
             self.active_motors.switch_to_velocity_controller(model)
+        else:
+            raise ValueError(f"Invalid active_mode: {active_mode}. Use 'position' or 'velocity'.")
+
+        if passive_mode == "position":
+            self.passive_motors.switch_to_position_controller(model)
+        elif passive_mode == "velocity":
             self.passive_motors.switch_to_velocity_controller(model)
+        else:
+            raise ValueError(f"Invalid passive_mode: {passive_mode}. Use 'position' or 'velocity'.")
+
 
 
     def reset_pose(self, model, data, time, current_position):
@@ -193,9 +200,9 @@ class FiniteStateMachine:
             init_mpc_qpos = self.mpc_ctrl[self.mpc_timestep]
             data.ctrl[:6] = init_mpc_qpos
             self.update_motors_controller(model,
-                                    active_ids=[self.shoulder_pan_id, self.shoulder_lift_id, self.elbow_id, self.wrist_1_id, self.wrist_2_id, self.wrist_3_id],
-                                    passive_ids=[],
-                                    mode="position")
+                                    active_ids=[self.shoulder_lift_id, self.elbow_id, self.wrist_1_id],
+                                    passive_ids=[self.shoulder_pan_id, self.wrist_2_id, self.wrist_3_id],
+                                    active_mode="position", passive_mode="position")
             print(f"Qpos: {data.qpos}")
             print(f"Qvel: {data.qvel}")
             print(f"Ctrl: {data.ctrl}")
@@ -250,7 +257,7 @@ class FiniteStateMachine:
                 self.update_motors_controller(model,
                                         active_ids=[],
                                         passive_ids=[self.shoulder_pan_id, self.shoulder_lift_id, self.elbow_id, self.wrist_1_id, self.wrist_2_id, self.wrist_3_id],
-                                        mode="position"
+                                        passive_mode="position"
                                         )
                 self.passive_motor_angles_hold = get_specific_joint_angles(data, self.passive_motors_list)       
                 
@@ -267,7 +274,7 @@ class FiniteStateMachine:
                 self.update_motors_controller(model,
                                         active_ids=[self.wrist_1_id],
                                         passive_ids=[self.shoulder_pan_id, self.shoulder_lift_id, self.elbow_id, self.wrist_2_id, self.wrist_3_id],
-                                        mode="position")
+                                        active_mode="velocity", passive_mode="position")
 
                 self.passive_motor_angles_hold = get_specific_joint_angles(data, self.passive_motors_list)           
                 #self.save_trajectory_to_csv_and_plot()
@@ -282,6 +289,10 @@ class FiniteStateMachine:
         quat_current_ee = np.array(data.sensor('pinch_quat').data.copy())
         quat_dist = quat_distance(quat_current_block, quat_desired_block)
 
+        if has_block_hit_floor(data):
+            print(f"Hit floor: {self.mpc_timestep}")
+            self.simulation_stop = True
+
         #print(f"Quat offset: {quat_offset} | Quat distance: {quat_dist}")
         
         self.time_hist.append(time)
@@ -295,14 +306,15 @@ class FiniteStateMachine:
         relative_quat = R.from_quat(quat_current_block) * R.from_quat(quat_current_ee).inv()
         #print(relative_quat.as_euler('xyz', degrees=True))  # Relative orientation in degrees
 
-        if self.mpc_timestep <= 105:
+        if self.mpc_timestep <= 100:
         #if block_orientation[1] > -1.042:
         #if self.mpc_timestep < len(self.mpc_ctrl) and quat_dist > 5e-3:
             given_ctrl = self.mpc_ctrl[self.mpc_timestep]
-            #data.ctrl[[0, 4, 5]] = [-1.58, -np.pi/2, 0]
-            #data.ctrl[[1, 2, 3]] = [-2 * np.pi, -3.01, -2.06]
+            data.ctrl[[0, 4, 5]] = [-1.58, -np.pi/2, 0]
+            #data.ctrl[[1, 2, 3]] = given_ctrl[[1, 2, 3]]
+            data.ctrl[[1, 2, 3]] = [-2*np.pi, -np.pi, -2*np.pi]
             #data.ctrl[:6] = given_ctrl
-            print(self.mpc_timestep, data.qpos[[1, 2, 3]].copy())
+            print(self.mpc_timestep, data.qpos[[1, 2, 3]].copy(), data.ctrl[:6].copy())
 
             # Log data at each time step
             if not hasattr(self, 'csv_initialized'):
@@ -318,14 +330,14 @@ class FiniteStateMachine:
                 qvel_str = ','.join(map(str, data.qvel[:6].copy()))
                 log_writer.writerow([time, ctrl_str, qpos_str, qvel_str])
 
-            self.mpc_timestep += frameskip
-
         else:
             gripper_open(data)
             self.has_gripper_opened = True
             self.release_time = time
             self.release_ee_linvel = ee_linvel
-            self.release_ee_angvel = ee_angvel 
+            self.release_ee_angvel = ee_angvel
+
+        self.mpc_timestep += frameskip
 
 
         # if self.has_gripper_opened == False:

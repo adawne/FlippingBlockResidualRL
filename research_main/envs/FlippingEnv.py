@@ -27,13 +27,16 @@ class URFlipBlockEnv(gym.Env):
         ],
     }
 
-    def __init__(self, render_mode=None):
+    def __init__(self, render_mode=None, use_mpc=False, use_qpos=True):
         block_position_orientation = [([0.2, 0.2, 0], [0, 0, 0])]
         world_xml_model = create_ur_model(marker_position=None, block_positions_orientations=block_position_orientation, use_mode="RL_train")
 
         self.render_mode = render_mode
         self.model = mujoco.MjModel.from_xml_string(world_xml_model)
         self.data = mujoco.MjData(self.model)
+
+        self.use_mpc = use_mpc
+        self.use_qpos = use_qpos
 
         self.joint_ids = {
             'shoulder_pan_joint': self.model.joint('shoulder_pan_joint').id,
@@ -56,10 +59,14 @@ class URFlipBlockEnv(gym.Env):
         ]
 
         self.active_motors = ActuatorController(self.active_motors_list)
-        self.active_motors.switch_to_position_controller(self.model)
+        
 
         self.passive_motors = ActuatorController(self.passive_motors_list)
-        self.passive_motors.switch_to_position_controller(self.model)
+        if self.use_qpos:
+            self.active_motors.switch_to_position_controller(self.model)
+        else:
+            self.active_motors.switch_to_velocity_controller(self.model)
+
 
 
         mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
@@ -81,21 +88,35 @@ class URFlipBlockEnv(gym.Env):
             default_cam_config=DEFAULT_CAMERA_CONFIG,
         )
 
-        qpos_min = np.array([-2 * np.pi, -np.pi, -2 * np.pi])
-        qpos_max = np.array([2 * np.pi, np.pi, 2 * np.pi])
+        if self.use_qpos:
+            self.qpos_min = np.array([-2 * np.pi, -np.pi, -2 * np.pi])
+            self.qpos_max = np.array([2 * np.pi, np.pi, 2 * np.pi])
+        else: 
+            self.qvel_min = -np.array([120, 180, 180]) * np.pi / 180
+            self.qvel_max = np.array([120, 180, 180]) * np.pi / 180
 
-        self.mpc_nominal_traj = []
-        with open('research_main/envs/precomputed_mpc_traj/interpolated_trajectory.csv', 'r') as csvfile:
-            reader = csv.DictReader(csvfile)
-            for row in reader:
-                ctrl_values = [float(x) for x in row['QPos'].split(',')]
-                self.mpc_nominal_traj.append([ctrl_values[i] for i in [1, 2, 3]])
+        if self.use_mpc:
+            self.mpc_nominal_traj = []
+            with open('research_main/envs/precomputed_mpc_traj/interpolated_trajectory.csv', 'r') as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    if self.use_qpos:
+                        ctrl_values = [float(x) for x in row['QPos'].split(',')]
+                    else:
+                        ctrl_values = [float(x) for x in row['QVel'].split(',')]
+                    self.mpc_nominal_traj.append([ctrl_values[i] for i in [1, 2, 3]])
 
-        self.mpc_nominal_traj = np.array(self.mpc_nominal_traj)
-        self.residual_low = np.max(qpos_min - self.mpc_nominal_traj, axis=0)
-        self.residual_high = np.min(qpos_max - self.mpc_nominal_traj, axis=0)
+            self.mpc_nominal_traj = np.array(self.mpc_nominal_traj)
+
+            if self.use_qpos:
+                self.residual_low = np.max(self.qpos_min - self.mpc_nominal_traj, axis=0)
+                self.residual_high = np.min(self.qpos_max - self.mpc_nominal_traj, axis=0)
+            else:
+                self.residual_low = np.max(self.qvel_min - self.mpc_nominal_traj, axis=0)
+                self.residual_high = np.min(self.qvel_max - self.mpc_nominal_traj, axis=0)
+            self.mpc_timestep = 0
         #print(f"Action Residual Bound: {self.residual_low} - {self.residual_high}")
-
+ 
         # Define observation and action spaces
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(17,), dtype=np.float64)
         self.action_space = spaces.Box(
@@ -107,7 +128,6 @@ class URFlipBlockEnv(gym.Env):
 
         self.valid_flip = True
         self.trigger_iteration = 0
-        self.mpc_timestep = 0
         self.initial_block_quat = [1, 0, 0, 0]
         self.quat_release_desired_block = R.from_euler('xyz', [0, np.pi-2.0945, -3.14]).as_quat()
         
@@ -139,7 +159,9 @@ class URFlipBlockEnv(gym.Env):
 
         self.valid_flip = True
         self.trigger_iteration = 0
-        self.mpc_timestep = 0
+
+        if self.use_mpc:
+            self.mpc_timestep = 0
         
         observation = self._get_obs()
         info = self._get_info()
@@ -148,8 +170,14 @@ class URFlipBlockEnv(gym.Env):
 
     def _normalize_action(self, action):
         action = np.array(action)  
-        return self.residual_low + 0.5 * (action + 1) * (self.residual_high - self.residual_low)
 
+        if self.use_mpc:
+            return self.residual_low + 0.5 * (action + 1) * (self.residual_high - self.residual_low)
+        else:
+            if self.use_qpos:
+                return self.qpos_min + 0.5 * (action + 1) * (self.qpos_max - self.qpos_min)
+            else:
+                return self.qvel_min + 0.5 * (action + 1) * (self.qvel_max - self.qvel_min)
 
 
     def step(self, action):
@@ -162,18 +190,24 @@ class URFlipBlockEnv(gym.Env):
         self.block_quat = self.data.sensor('block_quat').data.copy()
         self.block_position, _ = get_block_pose(self.model, self.data)
         
-        mpc_action = self.mpc_nominal_traj[self.mpc_timestep]
+        if self.use_mpc:
+            mpc_action = self.mpc_nominal_traj[self.mpc_timestep]
         normalized_action = self._normalize_action(action)
-        final_action = mpc_action + normalized_action
-        #final_action = mpc_action
+
+        if self.use_mpc:
+            final_action = mpc_action + normalized_action
+            #final_action = mpc_action 
+            self.mpc_timestep += frame_skip
+            # print(f"Action original: {action} | Normalized action: {normalized_action} | MPC action: {mpc_action} | Final action: {final_action} {self.data.ctrl[:6].copy()}")
+
+        else:
+            final_action = normalized_action
+            # print(f"Action original: {action} | Normalized action: {normalized_action} | Final action: {final_action} {self.data.ctrl[:6].copy()}")
 
         self.data.ctrl[self.passive_motors_list] = self.fixed_qpos_values
         self.data.ctrl[self.active_motors_list] = final_action
 
-        #print(f"Action original: {action} | Normalized action: {normalized_action} | MPC action: {mpc_action} | Final action: {final_action} {self.data.ctrl[:6].copy()}")
-
         mujoco.mj_step(self.model, self.data, nstep=frame_skip)
-        self.mpc_timestep += frame_skip
 
         reward, terminated = self._compute_reward()
 
@@ -192,15 +226,16 @@ class URFlipBlockEnv(gym.Env):
         qvel_limits = np.array([120 * np.pi / 180, 180 * np.pi / 180, 180 * np.pi / 180])
 
         if has_block_hit_floor(self.data):
-            #print("Hit floor before flip")
+            # print("Hit floor before flip")
             return -20, True
 
-        elif np.any(active_qvel < -qvel_limits) or np.any(active_qvel > qvel_limits):
-            #print("Joint velocity limit exceeded")
-            return -20, True
+        if self.use_qpos:
+            if np.any(active_qvel < -qvel_limits) or np.any(active_qvel > qvel_limits):
+                # print("Joint velocity limit exceeded")
+                return -20, True
 
-        elif self._is_close_to_desired_state():
-            #print("Close to desired state")
+        if self._is_close_to_desired_state():
+            # print("Close to desired state")
             return 20, True
 
         position_error = abs(block_height - self.desired_release_state['h_0'])
@@ -223,11 +258,15 @@ class URFlipBlockEnv(gym.Env):
             - 0.1 * angular_velocity_error
             - 0.1 * orientation_error
         )
-        #print("Discrepancy between desired state and current state", progress_reward, reward)
+        # print("Discrepancy between desired state and current state", progress_reward, reward)
 
-        if self.mpc_timestep >= len(self.mpc_nominal_traj) or quat_dist < 5e-3:
-            #print("MPC Timestep or angle pass")
+        if self.use_mpc and self.mpc_timestep >= len(self.mpc_nominal_traj):
+            # print("MPC Timestep or angle pass")
             return reward, True 
+        
+        if quat_dist < 5e-3:
+            # print("Angle Pass")
+            return reward, True
 
         return reward, False
      
@@ -289,7 +328,6 @@ class URFlipBlockEnv(gym.Env):
         translational_velocity_residual, angular_velocity_residual, height_residual, orientation_residual = self._calculate_residuals()
 
         info = {
-            "mpc_timestep": self.mpc_timestep,
             "joint_positions": joint_pos.tolist(),
             "joint_velocities": joint_vel.tolist(),
             "ee_height_residual": height_residual,
@@ -298,7 +336,12 @@ class URFlipBlockEnv(gym.Env):
             "orientation_residual": orientation_residual,
             "valid_flip": self.valid_flip,
         }
+
+        if self.use_mpc:  # Add mpc_timestep only if self.use_mpc is True
+            info["mpc_timestep"] = self.mpc_timestep
+
         return info
+
 
     def render(self):
         return self.mujoco_renderer.render(self.render_mode)
@@ -322,16 +365,19 @@ class URFlipBlockEnv(gym.Env):
 #         print("Initial observation:", observation)
 #         print("Action space (low):", env.action_space.low)
 #         print("Action space (high):", env.action_space.high)
+#         print(f"Low normalized_action = {env._normalize_action(env.action_space.low)}")
+#         print(f"High normalized_action = {env._normalize_action(env.action_space.high)}")
 
 #         total_reward = 0
 #         terminated = False
 #         action_count = 0
+#         frame_skip = 5
 
 #         while not terminated:
 #             print("="*25)
-#             print(f"Step {env.mpc_timestep}:")
-#             action = env.action_space.sample()  # Generate a random action
-#             #action = [-1, -1, -1]
+#             print(f"Step {action_count*frame_skip}:")
+#             #action = env.action_space.sample()  # Generate a random action
+#             action = [-1, -1, -1]
 #             observation, reward, terminated, truncated, info = env.step(action)
 #             total_reward += reward
 #             action_count += 1
@@ -356,6 +402,6 @@ class URFlipBlockEnv(gym.Env):
 # if __name__ == "__main__":
 #     manual_test()
 
-    # env = URFlipBlockEnv(render_mode='human')
-    # check_env(env, skip_render_check=False)
+#     # env = URFlipBlockEnv(render_mode='human')
+#     # check_env(env, skip_render_check=False)
 
