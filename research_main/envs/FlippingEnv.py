@@ -129,19 +129,20 @@ class URFlipBlockEnv(gym.Env):
         self.valid_flip = True
         self.trigger_iteration = 0
         self.initial_block_quat = [1, 0, 0, 0]
-        self.quat_release_desired_block = R.from_euler('xyz', [0, np.pi-2.0945, -3.14]).as_quat()
+        self.theta_y0_release = 1.0472
+        self.quat_release_desired_block = R.from_euler('xyz', [0, np.pi-self.theta_y0_release, -3.14]).as_quat()
         
 
         # Desired release state
         self.desired_release_state = {
             'v_x0': 0.2,
             'v_y0': 0,
-            'v_z0': 0.5864,
+            'v_z0': 1.6705,
             'theta_x0': 0,
-            'theta_y0': np.pi - 2.0944,
+            'theta_y0': np.pi - self.theta_y0_release,
             'theta_z0': -3.14,
             'omega_x0': 0,
-            'omega_y0': -3.14,
+            'omega_y0': -4.3,
             'omega_z0': 0,
             'h_0': 0.35
         }

@@ -302,6 +302,11 @@
       solref="0.005 1"/>
   </equality>
 
+  <sensor>
+    <framepos name="pinch_pos" objtype="site" objname="pinch"/>
+    <framequat name="pinch_quat" objtype="site" objname="pinch"/>
+  </sensor>
+
   <actuator>
     <general class="size4" name="shoulder_pan" joint="shoulder_pan_joint"/>
     <general class="size4" name="shoulder_lift" joint="shoulder_lift_joint"/>

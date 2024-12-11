@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.optimize import minimize
+from scipy.spatial.transform import Rotation as R
 import mujoco
 import os
 
@@ -25,7 +26,7 @@ def forward_kinematics(model, data, q):
 
 
 current_dir = os.path.dirname(__file__)
-path_to_model = os.path.join(current_dir, '..', 'research_main', 'envs', 'universal_robots_ur10e_2f85_example', 'ur10e_2f85.xml')
+path_to_model = os.path.join(current_dir, '..', 'env_test', 'ur10e_2f85_mpc.xml')
 model = mujoco.MjModel.from_xml_path(path_to_model)    
 data = mujoco.MjData(model)
 
@@ -37,9 +38,14 @@ q_dot_max = np.array([120 * np.pi / 180] * 2 + [180 * np.pi / 180] * 4)
 alpha = 1.0
 beta = 1.0
 
-x_ee_desired = np.array([0.9, 0.2, 0.35, 
-                        -1.25300627e-04, -3.16130824e-01, -3.86373210e-04, -9.48715520e-01])
-v_ee_desired = np.array([0.2, 0, 0.5864, 0, -3.14, 0])
+euler_angles = np.array([0.0, np.pi-1.0472, -3.14])  
+quat_from_euler = R.from_euler('xyz', euler_angles).as_quat()
+
+x_ee_desired = np.concatenate((
+    np.array([0.2, 0.2, 0.35]),  # Coordinate positions
+    quat_from_euler                # Quaternion derived from Euler angles
+))
+v_ee_desired = np.array([0.2, 0, 1.6705, 0, -4.3, 0])
 #initial_q = np.zeros(n) 
 initial_q = [-1.5923697502906031,-2.2355866024308724,2.702949141598393,-2.067142791964366,-1.572676790518878,-4.223297354370639e-09]
 

@@ -118,8 +118,8 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                 time_hist.append(time)
 
                 if fsm.has_gripper_opened == False:
-                    fsm.flip_block(model, data, time, ee_flip_target_velocity)
-                    #fsm.flip_block_mpc(model, data, time, frameskip)
+                    #fsm.flip_block(model, data, time, ee_flip_target_velocity)
+                    fsm.flip_block_mpc(model, data, time, frameskip)
 #===========================================================================================================
 
                 # After flipping block
@@ -143,8 +143,8 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                             screenshot_iteration += 1
                     # Holding position
                     else:
-                        fsm.flip_block(model, data, time, ee_flip_target_velocity)
-                        #fsm.flip_block_mpc(model, data, time, frameskip)
+                        #fsm.flip_block(model, data, time, ee_flip_target_velocity)
+                        fsm.flip_block_mpc(model, data, time, frameskip)
 
                     # To log the release state of the block
                     if trigger_iteration == 1:

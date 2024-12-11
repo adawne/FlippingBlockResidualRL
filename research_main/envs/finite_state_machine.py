@@ -208,9 +208,9 @@ class FiniteStateMachine:
             init_mpc_qpos = self.mpc_ctrl[self.mpc_timestep]
             data.ctrl[:6] = init_mpc_qpos
             self.update_motors_controller(model,
-                                    active_ids=[self.shoulder_pan_id, self.shoulder_lift_id, self.elbow_id, self.wrist_1_id, self.wrist_2_id, self.wrist_3_id],
-                                    passive_ids=[],
-                                    active_mode="velocity", passive_mode="velocity")
+                                    active_ids=[self.shoulder_lift_id, self.elbow_id, self.wrist_1_id],
+                                    passive_ids=[self.shoulder_pan_id, self.wrist_2_id, self.wrist_3_id],
+                                    active_mode="velocity", passive_mode="position")
             # print(f"Qpos: {data.qpos}")
             # print(f"Qvel: {data.qvel}")
             # print(f"Ctrl: {data.ctrl}")
