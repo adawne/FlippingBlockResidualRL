@@ -27,9 +27,9 @@ class URFlipBlockEnv(gym.Env):
         ],
     }
 
-    def __init__(self, render_mode=None, use_mpc=False, use_qpos=True):
+    def __init__(self, render_mode=None, use_mpc=True, use_qpos=False):
         block_position_orientation = [([0.2, 0.2, 0], [0, 0, 0])]
-        world_xml_model = create_ur_model(marker_position=None, block_positions_orientations=block_position_orientation, use_mode="RL_train")
+        world_xml_model = create_ur_model(marker_position=None, block_positions_orientations=block_position_orientation, xml_mode="RL_train")
 
         self.render_mode = render_mode
         self.model = mujoco.MjModel.from_xml_string(world_xml_model)
@@ -138,10 +138,10 @@ class URFlipBlockEnv(gym.Env):
             'v_y0': 0,
             'v_z0': 0.5864,
             'theta_x0': 0,
-            'theta_y0': np.pi - 2.0945,
+            'theta_y0': np.pi - 2.0944,
             'theta_z0': -3.14,
             'omega_x0': 0,
-            'omega_y0': -0.314,
+            'omega_y0': -3.14,
             'omega_z0': 0,
             'h_0': 0.35
         }
@@ -210,7 +210,7 @@ class URFlipBlockEnv(gym.Env):
         self.data.ctrl[self.passive_motors_list] = self.fixed_qpos_values
         self.data.ctrl[self.active_motors_list] = final_action
 
-        self.RL_actions.append(self.data.qpos[:6].copy())
+        self.RL_actions.append(self.data.ctrl[:6].copy())
         mujoco.mj_step(self.model, self.data, nstep=frame_skip)
 
         reward, terminated = self._compute_reward()
@@ -220,17 +220,23 @@ class URFlipBlockEnv(gym.Env):
         if self.render_mode == "human":
             self.render()
 
-        print("="*25)
-        print({
-            "ee_height_residual": info.get("ee_height_residual"),
-            "translational_velocity_residual": info.get("translational_velocity_residual"),
-            "angular_velocity_residual": info.get("angular_velocity_residual"),
-            "orientation_residual": info.get("orientation_residual"),
-        })
-        print("="*25)
+        # print("=" * 25)
+        # euler_angles_xyz = R.from_quat(info.get("raw_ee_quat")).as_euler('xyz', degrees=True)
+        # print({
+        #     "ee_height_residual": info.get("ee_height_residual"),
+        #     "translational_velocity_residual": info.get("translational_velocity_residual"),
+        #     "angular_velocity_residual": info.get("angular_velocity_residual"),
+        #     "orientation_residual": info.get("orientation_residual"),
+        #     "raw_ee_linvel": info.get("raw_ee_linvel"),
+        #     "raw_ee_angvel": info.get("raw_ee_angvel"),
+        #     "raw_ee_height": info.get("raw_ee_height"),
+        #     "raw_ee_quat": info.get("raw_ee_quat"),
+        #     "euler_angles_xyz": euler_angles_xyz.tolist()
+        # })
+        # print("=" * 25)
 
-        if terminated:
-            self._save_to_csv()
+        # if terminated:
+        #     self._save_to_csv()
 
         return observation, reward, terminated, False, info
 
@@ -287,23 +293,25 @@ class URFlipBlockEnv(gym.Env):
 
         return reward, False
      
+    
     def _get_obs(self): 
         joint_pos = self.data.qpos[self.active_motors_list].copy() 
         joint_vel = self.data.qvel[self.active_motors_list].copy()  
-        ee_trans_vel = self.data.sensor('pinch_linvel').data.copy()  
-        ee_ang_vel = self.data.sensor('pinch_angvel').data.copy()    
-        ee_quat = self.data.sensor('pinch_quat').data.copy()         
-        ee_height = self.data.sensor('pinch_pos').data.copy()[2]     
-        
+        self.ee_trans_vel = self.data.sensor('pinch_linvel').data.copy()  
+        self.ee_ang_vel = self.data.sensor('pinch_angvel').data.copy()    
+        self.ee_quat = self.data.sensor('pinch_quat').data.copy()         
+        self.ee_height = self.data.sensor('pinch_pos').data.copy()[2]     
+
         obs = np.concatenate([
             joint_pos,         
             joint_vel,         
-            [ee_height],       
-            ee_quat,           
-            ee_trans_vel,      
-            ee_ang_vel,        
+            [self.ee_height],       
+            self.ee_quat,           
+            self.ee_trans_vel,      
+            self.ee_ang_vel,        
         ])
         return obs
+
 
     def _calculate_residuals(self):
         translational_velocity_residual = np.linalg.norm(
@@ -352,12 +360,17 @@ class URFlipBlockEnv(gym.Env):
             "angular_velocity_residual": angular_velocity_residual,
             "orientation_residual": orientation_residual,
             "valid_flip": self.valid_flip,
+            "raw_ee_linvel": self.ee_trans_vel.tolist(),
+            "raw_ee_angvel": self.ee_ang_vel.tolist(),
+            "raw_ee_height": self.ee_height,
+            "raw_ee_quat": self.ee_quat,
         }
 
-        if self.use_mpc:  # Add mpc_timestep only if self.use_mpc is True
+        if self.use_mpc:  
             info["mpc_timestep"] = self.mpc_timestep
 
         return info
+
 
 
     def render(self):

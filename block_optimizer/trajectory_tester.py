@@ -5,35 +5,46 @@ g = 9.81
 
 # Objective function (calculates objective value based on guess values)
 def objective(x, I, m):
-    v_x0, v_y0, theta_0, omega, h = x
-    T = np.sqrt(2 * h / g)  
-    v_f = np.sqrt(v_x0**2 + v_y0**2)  
-    potential_energy = m * g * h 
-    return np.sqrt(I * omega**2 + m * v_f**2 + potential_energy)
+    v_x0, v_y0, theta_0, omega, h_0 = x
+    # Time of flight based on correct parabolic motion
+    T_ascent = v_y0 / g
+    T_descent = np.sqrt(2 * (h_0 + (v_y0**2 / (2 * g))) / g)
+    T = T_ascent + T_descent
+    
+    # Total translational velocity at release
+    v_f = np.sqrt(v_x0**2 + v_y0**2) 
+    
+    # Rotational kinetic energy
+    rotational_ke = 0.5 * I * omega**2
+    
+    # Translational kinetic energy
+    translational_ke = 0.5 * m * v_f**2
+    
+    # Potential energy due to release height
+    potential_energy = m * g * h_0
+    
+    # Total energy (objective to minimize)
+    total_energy = np.sqrt(rotational_ke + translational_ke + potential_energy)
+    
+    return total_energy
 
-# Objective with regularization (includes regularization term)
-def objective_with_regularization(x, I, m):
-    x = np.array(x) 
-    regularization = 1e-6 * np.sum(x**2) 
-    return objective(x, I, m) + regularization
 
-# Constraint to check if the block lands upright
+# Constraint to ensure the block lands at pi (upright)
 def constraint_theta_final(x):
-    v_x0, v_y0, theta_0, omega, h = x
-    T = np.sqrt(2 * h / g)  
-    return np.pi - (theta_0 + omega * T)  
+    v_x0, v_y0, theta_0, omega, h_0 = x
+    T_ascent = v_y0 / g
+    
+    descent_first_term = v_y0**2 / g**2
+    descent_second_term = 2 * h_0 / g
+    T_descent = np.sqrt(descent_first_term + descent_second_term)
+    T = T_ascent + T_descent
+    return np.pi - (theta_0 + omega * T)
 
-# Constraint to limit angular velocity
+# Constraint to limit the angular velocity
 def constraint_omega_limit(x):
     omega = x[3]
-    return (2 * np.pi / 3) - omega  
+    return 4.45 - omega  # omega <= 4.45 rad/s
 
-# Constraint to make sure height is reasonable
-def constraint_height_limit(x):
-    h = x[4]
-    return h - 0.1  
-# Bounds for the optimization variables
-bnds = [(0, None), (0, None), (0, 2 * np.pi / 3), (0, 2 * np.pi / 3), (0.1, None)]  
 
 # Random inertia generation for each block
 def random_inertia():
@@ -48,12 +59,11 @@ def evaluate_guess(x, I, m):
     v_x0, v_y0, theta_0, omega, h = x
 
     # Evaluate objective function
-    obj_value = objective_with_regularization(x, I, m)
+    obj_value = objective(x, I, m)
     
     # Check constraints
     theta_constraint = constraint_theta_final(x)
     omega_constraint = constraint_omega_limit(x)
-    height_constraint = constraint_height_limit(x)
 
     print("===========================")
     print(f"Guessed values: v_x0 = {v_x0:.4f}, v_y0 = {v_y0:.4f}, theta_0 = {theta_0:.4f}, omega = {omega:.4f}, h = {h:.4f}")
@@ -62,9 +72,8 @@ def evaluate_guess(x, I, m):
     # Checking constraint satisfaction
     print(f"Constraint: theta_final (should be 0): {theta_constraint:.4f}")
     print(f"Constraint: omega limit (should be >= 0): {omega_constraint:.4f}")
-    print(f"Constraint: height limit (should be >= 0): {height_constraint:.4f}")
 
-    if np.isclose(theta_constraint, 0, atol=1e-2):
+    if np.isclose(theta_constraint, 0, atol=5e-2):
         print("The block will land upright (theta_f = pi).")
     else:
         print("The block will NOT land upright.")
@@ -74,10 +83,7 @@ def evaluate_guess(x, I, m):
     else:
         print("The angular velocity constraint is NOT satisfied.")
     
-    if height_constraint >= 0:
-        print("The height constraint is satisfied.")
-    else:
-        print("The height constraint is NOT satisfied.")
+
 
 # Input guesses for the variables
 while True:

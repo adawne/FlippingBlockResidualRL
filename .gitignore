@@ -7,11 +7,9 @@ __pycache__/
 wandb/
 log/
 research_main/__pycache__/
-research_main/envs/json params/
 results/
 dcgm/
 research_main/envs/outputs/
-research_main/envs/json params
 env_test/assets_2f85
 env_test/assets_ur10e
 env_test/mujoco_menagerie
@@ -20,3 +18,5 @@ env_test/outputs standalone
 policy results/
 research_main/envs/mpc_log.csv
 research_main/envs/RL_log.csv
+research_main/envs/universal_robots_ur10e_2f85_example/
+RL_log.csv

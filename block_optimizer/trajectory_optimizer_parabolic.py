@@ -49,8 +49,8 @@ def constraint_omega_limit(x):
 bnds = [
     (0.2, None),              # v_x0 >= 0.1
     (0.5, 2),              # v_y0 >= 0
-    (0, 2 * np.pi / 3),     # 0 <= theta_0 <= 2*pi/3
-    (0, 3.14),              # 0 <= omega <= 4.45
+    (0, 1.0472),     # 0 <= theta_0 <= 2*pi/3
+    (0, 4.3),              # 0 <= omega <= 4.45
     (0.35, None)               # h_0 >= 0 (release height)
 ]
 

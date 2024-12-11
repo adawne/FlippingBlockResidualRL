@@ -1,10 +1,8 @@
 import os
-import time
 import numpy as np
 import mujoco
 import mujoco.viewer
 import argparse
-import inspect
 
 import matplotlib.pyplot as plt
 from datetime import datetime
@@ -17,7 +15,7 @@ from finite_state_machine import *
 
 def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_size, ee_flip_target_velocity, sim_description, 
         block_solimp, block_solref, block_friction, cone, noslip_iterations, noslip_tolerance, impratio, pad_friction, 
-        pad_solimp, pad_solref, clampness, use_random_parameters):
+        pad_solimp, pad_solref, clampness, use_random_parameters, xml_mode):
     masses = []
     time_discrepancies = []
     angle_discrepancies = []
@@ -42,7 +40,7 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                                         block_mass=block_mass, block_size=block_size, block_solimp=block_solimp, 
                                         block_solref=block_solref, block_friction=block_friction, cone=cone, 
                                         noslip_iterations=noslip_iterations, noslip_tolerance=noslip_tolerance,impratio=impratio, 
-                                        pad_friction=pad_friction, pad_solimp=pad_solimp, pad_solref=pad_solref)
+                                        pad_friction=pad_friction, pad_solimp=pad_solimp, pad_solref=pad_solref, xml_mode=xml_mode)
         model = mujoco.MjModel.from_xml_string(world_xml_model)
         #model.opt.timestep = 0.008
         print(f"Simulation timestep: {model.opt.timestep}")
@@ -81,6 +79,7 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
         frameskip = 1
 
         while has_block_steady == False and data.time < 8:
+            #print(fsm.state)
             #print(data.contact.geom1, data.contact.geom2)
             time = data.time
             mujoco.mj_step(model, data, nstep = frameskip)
@@ -119,8 +118,8 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                 time_hist.append(time)
 
                 if fsm.has_gripper_opened == False:
-                    #fsm.flip_block(model, data, time, ee_flip_target_velocity)
-                    fsm.flip_block_mpc(model, data, time, frameskip)
+                    fsm.flip_block(model, data, time, ee_flip_target_velocity)
+                    #fsm.flip_block_mpc(model, data, time, frameskip)
 #===========================================================================================================
 
                 # After flipping block
@@ -144,8 +143,8 @@ def main(iteration, render_modes, contact_vis, random_mass, block_mass, block_si
                             screenshot_iteration += 1
                     # Holding position
                     else:
-                        #fsm.flip_block(model, data, time, ee_flip_target_velocity)
-                        fsm.flip_block_mpc(model, data, time, frameskip)
+                        fsm.flip_block(model, data, time, ee_flip_target_velocity)
+                        #fsm.flip_block_mpc(model, data, time, frameskip)
 
                     # To log the release state of the block
                     if trigger_iteration == 1:
@@ -274,7 +273,7 @@ if __name__ == "__main__":
     parser.add_argument('--pad_solref', nargs='+', type=float, default=[0.004, 1])
     parser.add_argument('--clampness', type=int, default=220)
     parser.add_argument('--use_random_parameters', action='store_true', help="Use parameter combinations")
-    
+    parser.add_argument('--xml_mode', type=str, default="manual_flip")
     args = parser.parse_args()
     
     if args.use_random_parameters:

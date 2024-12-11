@@ -100,7 +100,6 @@ class FiniteStateMachine:
             raise ValueError(f"Invalid passive_mode: {passive_mode}. Use 'position' or 'velocity'.")
 
 
-
     def reset_pose(self, model, data, time, current_position):
         self.has_block_released = False
 
@@ -209,13 +208,13 @@ class FiniteStateMachine:
             init_mpc_qpos = self.mpc_ctrl[self.mpc_timestep]
             data.ctrl[:6] = init_mpc_qpos
             self.update_motors_controller(model,
-                                    active_ids=[self.shoulder_lift_id, self.elbow_id, self.wrist_1_id],
-                                    passive_ids=[self.shoulder_pan_id, self.wrist_2_id, self.wrist_3_id],
-                                    active_mode="position", passive_mode="position")
-            print(f"Qpos: {data.qpos}")
-            print(f"Qvel: {data.qvel}")
-            print(f"Ctrl: {data.ctrl}")
-            print(f"Block height: {get_block_pose(model, data)[0]}")
+                                    active_ids=[self.shoulder_pan_id, self.shoulder_lift_id, self.elbow_id, self.wrist_1_id, self.wrist_2_id, self.wrist_3_id],
+                                    passive_ids=[],
+                                    active_mode="velocity", passive_mode="velocity")
+            # print(f"Qpos: {data.qpos}")
+            # print(f"Qvel: {data.qvel}")
+            # print(f"Ctrl: {data.ctrl}")
+            # print(f"Block height: {get_block_pose(model, data)[0]}")
             self.state = 'flip_block'
             #print("Qpos before flip: ", get_joint_angles(data))
             # with open("flip_data_log.txt", "a") as file:
@@ -230,11 +229,12 @@ class FiniteStateMachine:
         joint_velocities = np.array(get_joint_velocities(data)).flatten()
         self.joint_vel_hist.append(joint_velocities)
         
+        self.prev_ee_pose = self.current_ee_pose
+        self.current_ee_pose = np.copy(get_ee_pose(model, data)[0])
         ee_linvel = data.sensor('pinch_linvel').data.copy()
         ee_angvel = data.sensor('pinch_angvel').data.copy()
-        self.ee_linvel_hist.append(ee_linvel)
-        self.ee_angvel_hist.append(ee_angvel)
-
+        # self.ee_velocity = get_ee_velocity(model, data)[0]
+        # self.ee_vel_hist.append(self.ee_velocity)
 
         if self.has_gripper_opened == False:
             #gripper_close(data, clampness)
@@ -243,7 +243,7 @@ class FiniteStateMachine:
             target_joint_velocities = calculate_joint_velocities_trans_partial(model, data, target_trans_velocities, target_ang_velocities)
             self.target_joint_vel_hist.append(target_joint_velocities.copy())
 
-            block_position, block_orientation = get_block_pose(model, data, 'block_0')
+            _, block_orientation = get_block_pose(model, data, 'block_0')
 
             shoulder_lift_vel_bias = -0.125
             elbow_vel_bias = -0.075
@@ -251,42 +251,43 @@ class FiniteStateMachine:
             biased_target_joint_velocities[1] += shoulder_lift_vel_bias
             biased_target_joint_velocities[2] += elbow_vel_bias
             biased_target_joint_velocities[3] = -np.pi
+            #print(self.active_motors_list)
             set_joint_states(data, self.active_motors_list, biased_target_joint_velocities)
 
             
             if block_orientation[1] < -1.042:
             #if get_specific_joint_angles(data, [self.wrist_1_id])[0]  > - 2.0944:
                 gripper_open(data)
+                print("Release wrist 1 angle: ", get_specific_joint_angles(data, [self.wrist_1_id])[0])
                 self.has_gripper_opened = True
+                self.has_block_flipped = True
                 self.release_time = time
                 self.release_ee_linvel = ee_linvel
                 self.release_ee_angvel = ee_angvel
 
-
                 self.update_motors_controller(model,
                                         active_ids=[],
                                         passive_ids=[self.shoulder_pan_id, self.shoulder_lift_id, self.elbow_id, self.wrist_1_id, self.wrist_2_id, self.wrist_3_id],
-                                        passive_mode="position"
-                                        )
+                                        active_mode="position", passive_mode="position")
                 self.passive_motor_angles_hold = get_specific_joint_angles(data, self.passive_motors_list)       
-                
+    
 
         else:
+            #print("This one triggered")
             self.target_joint_vel_hist.append(np.zeros((6)))
 
             self.trigger_iteration += 1
             set_joint_states(data, self.passive_motors_list, self.passive_motor_angles_hold)
 
-            if self.trigger_iteration > 50:
-                self.state = 'post_flip_block'
-                self.trigger_iteration = 0
-                self.update_motors_controller(model,
-                                        active_ids=[self.wrist_1_id],
-                                        passive_ids=[self.shoulder_pan_id, self.shoulder_lift_id, self.elbow_id, self.wrist_2_id, self.wrist_3_id],
-                                        active_mode="velocity", passive_mode="position")
+            # if self.trigger_iteration > 50:
+            #     #self.state = 'post_flip_block'
+            #     self.trigger_iteration = 0
+            #     self.update_motors_controller(model,
+            #                             active_ids=[self.wrist_1_id],
+            #                             passive_ids=[self.shoulder_pan_id, self.shoulder_lift_id, self.elbow_id, self.wrist_2_id, self.wrist_3_id],
+            #                             mode="position")
 
-                self.passive_motor_angles_hold = get_specific_joint_angles(data, self.passive_motors_list)           
-                #self.save_trajectory_to_csv_and_plot()
+            #     self.passive_motor_angles_hold = get_specific_joint_angles(data, self.passive_motors_list)    
 
     def flip_block_mpc(self, model, data, time, frameskip=1):
 
@@ -311,11 +312,13 @@ class FiniteStateMachine:
         ee_angvel = data.sensor('pinch_angvel').data.copy()
         self.ee_linvel_hist.append(ee_linvel)
         self.ee_angvel_hist.append(ee_angvel)
+        ee_pos = data.sensor('pinch_pos').data.copy()
         
         relative_quat = R.from_quat(quat_current_block) * R.from_quat(quat_current_ee).inv()
         #print(relative_quat.as_euler('xyz', degrees=True))  # Relative orientation in degrees
 
         #if block_orientation[1] > -1.042:
+        #print(f"Length of mpc timestep: {len(self.mpc_ctrl)}")
         if self.mpc_timestep < len(self.RL_ctrl) and quat_dist > 5e-3:
             given_ctrl = self.RL_ctrl[self.mpc_timestep]
             #data.ctrl[[0, 4, 5]] = [-1.58, -np.pi/2, 0]
@@ -337,13 +340,22 @@ class FiniteStateMachine:
                 qpos_str = ','.join(map(str, data.qpos[:6].copy()))
                 qvel_str = ','.join(map(str, data.qvel[:6].copy()))
                 log_writer.writerow([time, ctrl_str, qpos_str, qvel_str])
+        
+        elif self.mpc_timestep == len(self.RL_ctrl):
+            print("Terminal state")
+            print(f"Timestep index: {self.mpc_timestep}")
+            print(f"EE linvel: {ee_linvel}")
+            print(f"EE angvel: {ee_angvel}")
+            print(f"EE height: {ee_pos[2]}")
+            self.simulation_stop = True
 
-        else:
-            gripper_open(data)
-            self.has_gripper_opened = True
-            self.release_time = time
-            self.release_ee_linvel = ee_linvel
-            self.release_ee_angvel = ee_angvel
+        #print(self.mpc_timestep, len(self.RL_ctrl))
+        # else:
+        #     gripper_open(data)
+        #     self.has_gripper_opened = True
+        #     self.release_time = time
+        #     self.release_ee_linvel = ee_linvel
+        #     self.release_ee_angvel = ee_angvel
 
         self.mpc_timestep += frameskip
 

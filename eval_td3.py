@@ -33,21 +33,22 @@ def get_args():
     parser.add_argument("--n-step", type=int, default=1)
     parser.add_argument("--test-num", type=int, default=10)
     parser.add_argument("--device", type=str, default="cpu")
-    parser.add_argument("--load-path", type=str, default="policy results/best_policy.pth")
+    parser.add_argument("--render-modes", type=str, default="cpu")
+    parser.add_argument("--load-path", type=str, default="policy results/TD3 v0.1.1  -MPC -QVel - FixStart/final_policy.pth")
     return parser.parse_args()
 
 def evaluate_td3(args=get_args()):
 
-    env, _, _ = make_mujoco_env(
-        args.task,
-        args.seed,
-        num_train_envs=1,
-        num_test_envs=args.test_num,
-        obs_norm=False,
-    )
+    # env, _, _ = make_mujoco_env(
+    #     args.task,
+    #     args.seed,
+    #     num_train_envs=1,
+    #     num_test_envs=args.test_num,
+    #     obs_norm=False,
+    # )
 
 
-    env = gym.make(args.task, render_mode="human")  
+    env = gym.make(args.task, render_mode='human')  
 
     args.state_shape = env.observation_space.shape or env.observation_space.n
     args.action_shape = env.action_space.shape or env.action_space.n

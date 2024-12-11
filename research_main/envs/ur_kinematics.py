@@ -39,6 +39,7 @@ def calculate_joint_velocities_trans_partial(model, data, desired_velocity, desi
     
     joint_velocities = np.zeros(model.nv)
     joint_velocities[joint_indices] = joint_velocities_reduced
+
     
     joint_vel_limits = np.array([2*np.pi/3, np.pi/2]) 
     joint_velocities[joint_indices] = np.clip(joint_velocities[joint_indices], -joint_vel_limits, joint_vel_limits)
