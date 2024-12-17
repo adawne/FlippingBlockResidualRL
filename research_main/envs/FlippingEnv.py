@@ -1,4 +1,6 @@
 import gymnasium as gym
+import os
+import json
 import mujoco
 import numpy as np
 from gymnasium import spaces
@@ -27,16 +29,27 @@ class URFlipBlockEnv(gym.Env):
         ],
     }
 
-    def __init__(self, render_mode=None, use_mpc=True, use_qpos=False):
+    def __init__(self, render_mode=None, use_mode="RL_train",
+                 policy_version=None, policy_type="final_policy"):
+        
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        json_path = os.path.join(base_dir, "release_state_config.json")
+
+        with open(json_path, 'r') as json_file:
+            config = json.load(json_file)
+
+        self.use_mpc = config.get("use_mpc", False)
+        self.use_qpos = config.get("use_qpos", False)
+        release_state = config.get("release_state", None)
+
         block_position_orientation = [([0.2, 0.2, 0], [0, 0, 0])]
-        world_xml_model = create_ur_model(marker_position=None, block_positions_orientations=block_position_orientation, xml_mode="RL_train")
+        world_xml_model = create_ur_model(marker_position=None, block_positions_orientations=block_position_orientation, xml_mode=use_mode)
 
         self.render_mode = render_mode
         self.model = mujoco.MjModel.from_xml_string(world_xml_model)
         self.data = mujoco.MjData(self.model)
 
-        self.use_mpc = use_mpc
-        self.use_qpos = use_qpos
+        self.use_mode = use_mode
 
         self.joint_ids = {
             'shoulder_pan_joint': self.model.joint('shoulder_pan_joint').id,
@@ -71,7 +84,7 @@ class URFlipBlockEnv(gym.Env):
 
         mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
         self.fixed_qpos_values = self.data.qpos[self.passive_motors_list].copy()
-        gripper_close(self.data)
+        gripper_close(self.data)                     
 
         self.metadata = {
             "render_modes": [
@@ -97,7 +110,10 @@ class URFlipBlockEnv(gym.Env):
 
         if self.use_mpc:
             self.mpc_nominal_traj = []
-            with open('research_main/envs/precomputed_mpc_traj/interpolated_trajectory.csv', 'r') as csvfile:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            trajectory_path = os.path.join(base_dir, "..", "..", "trajectories", "precomputed_mpc_trajectory", "interpolated_trajectory.csv")
+
+            with open(trajectory_path, 'r') as csvfile:
                 reader = csv.DictReader(csvfile)
                 for row in reader:
                     if self.use_qpos:
@@ -129,31 +145,22 @@ class URFlipBlockEnv(gym.Env):
         self.valid_flip = True
         self.trigger_iteration = 0
         self.initial_block_quat = [1, 0, 0, 0]
-        self.theta_y0_release = 1.0472
-        self.quat_release_desired_block = R.from_euler('xyz', [0, np.pi-self.theta_y0_release, -3.14]).as_quat()
-        
 
-        # Desired release state
-        self.desired_release_state = {
-            'v_x0': 0.2,
-            'v_y0': 0,
-            'v_z0': 1.6705,
-            'theta_x0': 0,
-            'theta_y0': np.pi - self.theta_y0_release,
-            'theta_z0': -3.14,
-            'omega_x0': 0,
-            'omega_y0': -4.3,
-            'omega_z0': 0,
-            'h_0': 0.35
-        }
+        if release_state:
+            adjusted_release_state = release_state.copy()
+            adjusted_release_state["theta_y0"] = np.pi - release_state["theta_y0"]
+            self.desired_release_state = adjusted_release_state
+        
+        self.quat_release_desired_block = R.from_euler('xyz', [0, self.desired_release_state["theta_y0"], -3.14]).as_quat()
 
         self.block_linvel = self.data.sensor('block_linvel').data.copy()
         self.block_angvel = self.data.sensor('block_angvel').data.copy()
         self.block_quat = self.data.sensor('block_quat').data.copy()
         self.block_position, _ = get_block_pose(self.model, self.data)
 
+        self.policy_version = policy_version
+        self.policy_type = policy_type
         self.RL_actions = [] 
-        self.csv_file_path = "RL_log.csv" 
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -221,23 +228,25 @@ class URFlipBlockEnv(gym.Env):
         if self.render_mode == "human":
             self.render()
 
-        # print("=" * 25)
-        # euler_angles_xyz = R.from_quat(info.get("raw_ee_quat")).as_euler('xyz', degrees=True)
-        # print({
-        #     "ee_height_residual": info.get("ee_height_residual"),
-        #     "translational_velocity_residual": info.get("translational_velocity_residual"),
-        #     "angular_velocity_residual": info.get("angular_velocity_residual"),
-        #     "orientation_residual": info.get("orientation_residual"),
-        #     "raw_ee_linvel": info.get("raw_ee_linvel"),
-        #     "raw_ee_angvel": info.get("raw_ee_angvel"),
-        #     "raw_ee_height": info.get("raw_ee_height"),
-        #     "raw_ee_quat": info.get("raw_ee_quat"),
-        #     "euler_angles_xyz": euler_angles_xyz.tolist()
-        # })
-        # print("=" * 25)
+        if self.use_mode == "RL_eval":
+            # print("=" * 25)
+            # euler_angles_xyz = R.from_quat(info.get("raw_ee_quat")).as_euler('xyz', degrees=True)
+            # print({
+            #     "ee_height_residual": info.get("ee_height_residual"),
+            #     "translational_velocity_residual": info.get("translational_velocity_residual"),
+            #     "angular_velocity_residual": info.get("angular_velocity_residual"),
+            #     "orientation_residual": info.get("orientation_residual"),
+            #     "raw_ee_linvel": info.get("raw_ee_linvel"),
+            #     "raw_ee_angvel": info.get("raw_ee_angvel"),
+            #     "raw_ee_height": info.get("raw_ee_height"),
+            #     "raw_ee_quat": info.get("raw_ee_quat"),
+            #     "euler_angles_xyz": euler_angles_xyz.tolist()
+            # })
+            # print(f"Terminated: {terminated}")
 
-        # if terminated:
-        #     self._save_to_csv()
+            if terminated:
+                self._log_rl_release_state()
+                self._save_to_csv()
 
         return observation, reward, terminated, False, info
 
@@ -245,21 +254,24 @@ class URFlipBlockEnv(gym.Env):
 
     def _compute_reward(self):
         block_height = self.block_position[2]
-        quat_dist = quat_distance(self.block_quat, self.quat_release_desired_block)
+        quat_dist = quat_distance_new(self.block_quat, self.quat_release_desired_block)
         active_qvel = self.data.qvel[self.active_motors_list].copy() 
         qvel_limits = np.array([120 * np.pi / 180, 180 * np.pi / 180, 180 * np.pi / 180])
 
         if has_block_hit_floor(self.data):
-            # print("Hit floor before flip")
+            if self.use_mode == "RL_eval":
+                print("Hit floor before flip")
             return -20, True
 
         if self.use_qpos:
             if np.any(active_qvel < -qvel_limits) or np.any(active_qvel > qvel_limits):
-                #print("Joint velocity limit exceeded")
+                if self.use_mode == "RL_eval":
+                    print("Joint velocity limit exceeded")
                 return -20, True
 
         if self._is_close_to_desired_state():
-            #print("Close to desired state")
+            if self.use_mode == "RL_eval":
+                print("Close to desired state")
             return 20, True
 
         position_error = abs(block_height - self.desired_release_state['h_0'])
@@ -269,10 +281,7 @@ class URFlipBlockEnv(gym.Env):
         angular_velocity_error = np.linalg.norm(
             self.block_angvel - [self.desired_release_state['omega_x0'], self.desired_release_state['omega_y0'], self.desired_release_state['omega_z0']]
         )
-        desired_quat = R.from_euler(
-            'xyz', [self.desired_release_state['theta_x0'], self.desired_release_state['theta_y0'], self.desired_release_state['theta_z0']]
-        ).as_quat()
-        orientation_error = quat_distance_new(self.block_quat, desired_quat)
+        orientation_error = quat_dist
 
         progress_reward = max(0, 1 - (position_error + translational_velocity_error))
         reward = (
@@ -282,14 +291,18 @@ class URFlipBlockEnv(gym.Env):
             - 0.1 * angular_velocity_error
             - 0.1 * orientation_error
         )
-        #print("Discrepancy between desired state and current state", progress_reward, reward)
+        
+        if self.use_mode == "RL_eval":
+            print("Discrepancy between desired state and current state", progress_reward, reward)
 
         if self.use_mpc and self.mpc_timestep >= len(self.mpc_nominal_traj):
-            #print("MPC Timestep")
+            if self.use_mode == "RL_eval":
+                print("MPC timestep exceeded")
             return reward, True 
         
-        if quat_dist < 5e-3:
-            #print("Angle Pass")
+        if quat_dist < 0.01:
+            if self.use_mode == "RL_eval":
+                print(f"Release angle exceeded: {quat_dist}")
             return reward, True
 
         return reward, False
@@ -298,7 +311,7 @@ class URFlipBlockEnv(gym.Env):
     def _get_obs(self): 
         joint_pos = self.data.qpos[self.active_motors_list].copy() 
         joint_vel = self.data.qvel[self.active_motors_list].copy()  
-        self.ee_trans_vel = self.data.sensor('pinch_linvel').data.copy()  
+        self.ee_lin_vel = self.data.sensor('pinch_linvel').data.copy()  
         self.ee_ang_vel = self.data.sensor('pinch_angvel').data.copy()    
         self.ee_quat = self.data.sensor('pinch_quat').data.copy()         
         self.ee_height = self.data.sensor('pinch_pos').data.copy()[2]     
@@ -308,7 +321,7 @@ class URFlipBlockEnv(gym.Env):
             joint_vel,         
             [self.ee_height],       
             self.ee_quat,           
-            self.ee_trans_vel,      
+            self.ee_lin_vel,      
             self.ee_ang_vel,        
         ])
         return obs
@@ -361,7 +374,7 @@ class URFlipBlockEnv(gym.Env):
             "angular_velocity_residual": angular_velocity_residual,
             "orientation_residual": orientation_residual,
             "valid_flip": self.valid_flip,
-            "raw_ee_linvel": self.ee_trans_vel.tolist(),
+            "raw_ee_linvel": self.ee_lin_vel.tolist(),
             "raw_ee_angvel": self.ee_ang_vel.tolist(),
             "raw_ee_height": self.ee_height,
             "raw_ee_quat": self.ee_quat,
@@ -385,11 +398,58 @@ class URFlipBlockEnv(gym.Env):
         np.random.seed(seed)
 
     def _save_to_csv(self):
-        with open(self.csv_file_path, mode='w', newline='') as file:
+        # Get the base directory of the current file
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # Construct the absolute path for base_dir
+        base_dir = os.path.join(current_dir, "..", "..", "trajectories", "RL_trajectory")
+        policy_dir = os.path.join(base_dir, self.policy_version)
+
+        # Ensure the directory exists
+        os.makedirs(policy_dir, exist_ok=True)
+
+        # Create the full path to the CSV file
+        csv_file_path = os.path.abspath(os.path.join(policy_dir, f"raw_{self.policy_type}_trajectory.csv"))
+
+        # Write data to the CSV file
+        with open(csv_file_path, mode='w', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(["Ctrl_0", "Ctrl_1", "Ctrl_2", "Ctrl_3", "Ctrl_4", "Ctrl_5"])  # Header
             writer.writerows(self.RL_actions)
-        print(f"Actions saved to {self.csv_file_path}")
+
+        print(f"Actions saved to {csv_file_path}")
+
+    def _log_rl_release_state(self):
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        base_dir = os.path.join(current_dir, "..", "..", "trajectories", "RL_trajectory")
+        policy_dir = os.path.join(base_dir, self.policy_version)
+
+        os.makedirs(policy_dir, exist_ok=True)
+
+        csv_file_path = os.path.abspath(os.path.join(policy_dir, f"raw_{self.policy_type}_release_states.csv"))
+
+        release_data = {
+            "ee_linvel": self.ee_lin_vel.tolist(),
+            "ee_angvel": self.ee_ang_vel.tolist(),
+            "ee_height": self.ee_height,
+            "ee_quat": self.ee_quat.tolist(),
+        }
+
+        with open(csv_file_path, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["EE LinVel", "EE AngVel", "EE Height", "EE Quat"])
+            writer.writerow([
+                release_data["ee_linvel"], 
+                release_data["ee_angvel"], 
+                release_data["ee_height"], 
+                release_data["ee_quat"]
+            ])
+
+        print(f"RL Release State saved to {csv_file_path}")
+
+
+
 
 # def manual_test():
 #     env = URFlipBlockEnv(render_mode='human')  # Initialize the environment

@@ -7,16 +7,19 @@ __pycache__/
 wandb/
 log/
 research_main/__pycache__/
+research_main/envs/__pycache__/
 results/
 dcgm/
 research_main/envs/outputs/
-env_test/assets_2f85
-env_test/assets_ur10e
-env_test/mujoco_menagerie
-env_test/outputs mujoco test
-env_test/outputs standalone
+optimizers/block_optimizer/env_test/assets_2f85
+optimizers/block_optimizer/env_test/assets_ur10e
+optimizers/block_optimizer/env_test/mujoco_menagerie
+optimizers/block_optimizer/env_test/outputs mujoco test
+optimizers/block_optimizer/env_test/outputs standalone
 policy results/
 research_main/envs/mpc_log.csv
 research_main/envs/RL_log.csv
 research_main/envs/universal_robots_ur10e_2f85_example/
-RL_log.csv
+scripts/__pycache__/
+scripts/outputs/
+trajectories/RL_trajectory/

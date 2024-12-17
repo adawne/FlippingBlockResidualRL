@@ -163,7 +163,16 @@ def create_ur_model(marker_position=None,
                     pad_friction=5,
                     pad_solimp=[0.97, 0.99, 0.001],
                     pad_solref=[0.004, 1],
-                    xml_mode="manual_flip",):
+                    xml_mode="manual_flip"):
+
+
+    env_dir = os.path.dirname(os.path.abspath(__file__))  # Get the current file's directory
+    
+    # Set the path based on the mode
+    if xml_mode == "manual_flip":
+        asset_path = os.path.join(env_dir, "universal_robots_ur10e_2f85_or", "ur10e_2f85.xml")
+    elif xml_mode in ["RL_train", "RL_eval", "MPC_eval", "debug"]:
+        asset_path = os.path.join(env_dir, "universal_robots_ur10e_2f85", "ur10e_2f85.xml")
 
     marker_body = ""
     if marker_position is not None:
@@ -174,15 +183,8 @@ def create_ur_model(marker_position=None,
         block_bodies = create_block_bodies(block_positions_orientations, block_mass, block_size,
                                             block_solimp, block_solref, block_friction)
 
-    if xml_mode == "manual_flip":
-        include_file = '<include file="universal_robots_ur10e_2f85_or/ur10e_2f85.xml"/>'
-    elif xml_mode == "debug":
-        include_file = '<include file="../research_main/envs/universal_robots_ur10e_2f85/ur10e_2f85.xml"/>'
-    elif xml_mode == "RL_train":
-        include_file = '<include file="research_main/envs/universal_robots_ur10e_2f85/ur10e_2f85.xml"/>'
-    elif xml_mode == "RL_eval":
-        include_file = '<include file="universal_robots_ur10e_2f85/ur10e_2f85.xml"/>'
-         
+    
+    asset_path = os.path.abspath(asset_path)
 
     xml_string = f'''
     <mujoco model="ur10e scene">
@@ -258,7 +260,7 @@ def create_ur_model(marker_position=None,
         </default>
     </default>
 
-        {include_file}
+        <include file="{asset_path}"/>
 
         <option integrator="implicitfast"
                 cone="{cone}" 

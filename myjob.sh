@@ -21,4 +21,4 @@ conda activate RL_env_new
 
 
 #################### Training ####################
-python train_sac.py --epoch 500
+python scripts/RL_train_scripts/train_td3.py --epoch 500

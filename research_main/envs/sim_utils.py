@@ -28,7 +28,7 @@ def create_directories_and_save_config(i, block_mass, formatted_time, render_mod
 
 def build_config(i, render_modes, contact_vis, random_mass, block_mass, block_size, ee_flip_target_velocity, 
                  sim_description, block_solimp, block_solref, block_friction, cone, noslip_iterations, 
-                 noslip_tolerance, impratio, pad_friction, pad_solimp, pad_solref, clampness, use_random_parameters):
+                 noslip_tolerance, impratio, pad_friction, pad_solimp, pad_solref, clampness):
     config = {
         'iteration': i,
         'render_modes': render_modes,
@@ -49,7 +49,6 @@ def build_config(i, render_modes, contact_vis, random_mass, block_mass, block_si
         'pad_solimp': pad_solimp,
         'pad_solref': pad_solref,
         'clampness': clampness,
-        'use_random_parameters': use_random_parameters
     }
 
     return config
@@ -124,14 +123,15 @@ def plot_and_save_contacts(sub_output_dir, contact_hist):
 
 
 
-def log_simulation_results(i, release_time, fsm, block_release_pos, block_release_orientation, 
+def log_simulation_results(i, release_time, controller, block_release_pos, block_release_orientation, 
                            block_release_transvel, block_release_angvel, touch_ground_time, 
                            block_touch_ground_position, block_touch_ground_orientation):
     print("="*91)
     print(f"Iteration: {i}")
     print(f"Block release time: {release_time}")
-    print(f"Release EE linear velocity: {fsm.release_ee_linvel}")
-    print(f"Release EE angular velocity: {fsm.release_ee_angvel}")
+    print(f"Release EE height: {controller.release_ee_height}")
+    print(f"Release EE linear velocity: {controller.release_ee_linvel}")
+    print(f"Release EE angular velocity: {controller.release_ee_angvel}")
     print(f"Block release position: {block_release_pos}")
     print(f"Block release orientation: {block_release_orientation}")
     print(f"Block translational release velocity: {block_release_transvel}")
@@ -318,8 +318,8 @@ def check_physical_assumptions(release_time, touch_ground_time, block_release_po
 
         if in_air_indices:
             omega_exp = np.mean(np.array(block_ang_vel_hist)[in_air_indices], axis=0)
-        else:
-            omega_exp = np.zeros_like(block_release_orientation)
+        # else:
+        #     omega_exp = np.zeros_like(block_release_orientation)
         
         release_quat = np.asarray(block_release_quat).flatten()
         touch_ground_quat = np.asarray(block_touch_ground_quat).flatten()
