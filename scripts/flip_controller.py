@@ -279,7 +279,7 @@ class Controller:
                 "RL_euler_xyz": rl_euler.tolist(),
                 "MuJoCo_quat": mujoco_release['quat'],
                 "MuJoCo_euler_xyz": mujoco_euler.tolist(),
-                "quat_difference": np.linalg.norm(np.array(rl_release['quat']) - np.array(mujoco_release['quat']))
+                "quat_difference (norm)": np.linalg.norm(np.array(rl_release['quat']) - np.array(mujoco_release['quat']))
             },
             "MuJoCo_vs_Desired": {
                 "MuJoCo_linear_velocity": mujoco_release['linvel'],
@@ -295,7 +295,7 @@ class Controller:
                 "MuJoCo_euler_xyz": mujoco_euler.tolist(),
                 "Desired_quat": desired_quat.tolist(),
                 "Desired_euler_xyz": desired_euler.tolist(),
-                "quat_difference": np.linalg.norm(np.array(mujoco_release['quat']) - desired_quat)
+                "quat_difference (dist)": quat_distance_new(mujoco_release['quat'], desired_quat)
             }
         }
 

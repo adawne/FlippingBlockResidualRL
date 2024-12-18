@@ -2,15 +2,19 @@
     "release_state": {
         "v_x0": 0.2,
         "v_y0": 0,
-        "v_z0": 0.5864,
+        "v_z0": 1.6705,
         "theta_x0": 0,
-        "theta_y0": 2.0944,
+        "theta_y0": 1.0472,
         "theta_z0": -3.14,
         "omega_x0": 0,
-        "omega_y0": -3.14,
+        "omega_y0": -4.3,
         "omega_z0": 0,
         "h_0": 0.35
     },
     "use_mpc": false,
-    "use_qpos": false
+    "use_qpos": false,
+    "release_mode": 1
 }
+
+
+

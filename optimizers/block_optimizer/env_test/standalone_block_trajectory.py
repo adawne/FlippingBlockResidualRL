@@ -88,6 +88,7 @@ def main(render_modes, randomize_params):
 
         rotation = R.from_quat(block_orientation)
         block_orientation_euler_deg = rotation.as_euler('zyx', degrees=True) # Degree
+        
         #_, block_orientation_euler_rad = get_block_pose(model, data) # Radian
 
         if flipped:
@@ -110,6 +111,7 @@ def main(render_modes, randomize_params):
 
 
         else:
+            print(block_orientation_euler_deg)
             make_block_float(model, data)
             v_x_desired = 0.2
             v_z_desired = 1.6705
@@ -122,8 +124,7 @@ def main(render_modes, randomize_params):
             # omega_y_desired = -4.2
   
             #print(quat_distance_new(desired_angle_quat_array, data.sensor('block_quat').data.copy()))
-            if quat_distance_new(desired_angle_quat_array, data.sensor('block_quat').data.copy()) < 0.01:
-
+            if quat_distance_new(desired_angle_quat_array, data.sensor('block_quat').data.copy()) < 0.05:
                 data.xfrc_applied[block_body_id] = np.zeros(6) 
                 data.qfrc_applied[:] = 0
                 flipped = True

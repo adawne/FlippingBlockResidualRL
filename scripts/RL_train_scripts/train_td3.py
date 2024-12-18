@@ -75,7 +75,7 @@ def get_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def test_td3(args: argparse.Namespace = get_args()) -> None:
+def train_td3(args: argparse.Namespace = get_args()) -> None:
     args.task = 'research_main/FlipBlock-v0'
     env, train_envs, test_envs = make_mujoco_env(
         args.task,
@@ -191,4 +191,4 @@ def test_td3(args: argparse.Namespace = get_args()) -> None:
 
 
 if __name__ == "__main__":
-    test_td3()
+    train_td3()

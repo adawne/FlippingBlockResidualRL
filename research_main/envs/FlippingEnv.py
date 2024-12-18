@@ -40,6 +40,7 @@ class URFlipBlockEnv(gym.Env):
 
         self.use_mpc = config.get("use_mpc", False)
         self.use_qpos = config.get("use_qpos", False)
+        self.release_mode = config.get("release_mode", 1)
         release_state = config.get("release_state", None)
 
         block_position_orientation = [([0.2, 0.2, 0], [0, 0, 0])]
@@ -72,9 +73,8 @@ class URFlipBlockEnv(gym.Env):
         ]
 
         self.active_motors = ActuatorController(self.active_motors_list)
-        
-
         self.passive_motors = ActuatorController(self.passive_motors_list)
+
         if self.use_qpos:
             self.active_motors.switch_to_position_controller(self.model)
         else:
@@ -151,7 +151,8 @@ class URFlipBlockEnv(gym.Env):
             adjusted_release_state["theta_y0"] = np.pi - release_state["theta_y0"]
             self.desired_release_state = adjusted_release_state
         
-        self.quat_release_desired_block = R.from_euler('xyz', [0, self.desired_release_state["theta_y0"], -3.14]).as_quat()
+        self.euler_release_desired_block = [0, self.desired_release_state["theta_y0"], -3.14]
+        self.quat_release_desired_block = R.from_euler('xyz', self.euler_release_desired_block).as_quat()
 
         self.block_linvel = self.data.sensor('block_linvel').data.copy()
         self.block_angvel = self.data.sensor('block_angvel').data.copy()
@@ -219,7 +220,15 @@ class URFlipBlockEnv(gym.Env):
         self.data.ctrl[self.active_motors_list] = final_action
 
         self.RL_actions.append(self.data.ctrl[:6].copy())
+
+
         mujoco.mj_step(self.model, self.data, nstep=frame_skip)
+
+        block_quat_norm = np.linalg.norm(self.block_quat)
+        if block_quat_norm == 0:
+            self.block_euler = [0, 0, 0]
+        else:
+            self.block_euler = R.from_quat(self.block_quat).as_euler('xyz', degrees=True)
 
         reward, terminated = self._compute_reward()
 
@@ -229,20 +238,26 @@ class URFlipBlockEnv(gym.Env):
             self.render()
 
         if self.use_mode == "RL_eval":
-            # print("=" * 25)
-            # euler_angles_xyz = R.from_quat(info.get("raw_ee_quat")).as_euler('xyz', degrees=True)
-            # print({
-            #     "ee_height_residual": info.get("ee_height_residual"),
-            #     "translational_velocity_residual": info.get("translational_velocity_residual"),
-            #     "angular_velocity_residual": info.get("angular_velocity_residual"),
-            #     "orientation_residual": info.get("orientation_residual"),
-            #     "raw_ee_linvel": info.get("raw_ee_linvel"),
-            #     "raw_ee_angvel": info.get("raw_ee_angvel"),
-            #     "raw_ee_height": info.get("raw_ee_height"),
-            #     "raw_ee_quat": info.get("raw_ee_quat"),
-            #     "euler_angles_xyz": euler_angles_xyz.tolist()
-            # })
-            # print(f"Terminated: {terminated}")
+            print("=" * 25)
+            ee_euler = R.from_quat(info.get("raw_ee_quat")).as_euler('xyz', degrees=True)
+
+            print({
+                "ee_height_residual": info.get("ee_height_residual"),
+                "translational_velocity_residual": info.get("translational_velocity_residual"),
+                "angular_velocity_residual": info.get("angular_velocity_residual"),
+                "orientation_residual": info.get("orientation_residual"),
+                "raw_ee_linvel": info.get("raw_ee_linvel"),
+                "raw_ee_angvel": info.get("raw_ee_angvel"),
+                "raw_ee_height": info.get("raw_ee_height"),
+                "raw_ee_quat": info.get("raw_ee_quat"),
+                "euler_angles_ee": ee_euler.tolist(),
+                "raw_ee_quat": info.get("raw_ee_quat"),
+                "euler_angles_block": self.block_euler
+            })
+
+            print(f"Quat distance: {self.quat_dist}")
+            print(f"Terminated: {terminated}")
+            print(f"Is close to desired orientation: {self._is_orientation_in_target_range()}")
 
             if terminated:
                 self._log_rl_release_state()
@@ -254,23 +269,23 @@ class URFlipBlockEnv(gym.Env):
 
     def _compute_reward(self):
         block_height = self.block_position[2]
-        quat_dist = quat_distance_new(self.block_quat, self.quat_release_desired_block)
+        self.quat_dist = quat_distance_new(self.block_quat, self.quat_release_desired_block)
         active_qvel = self.data.qvel[self.active_motors_list].copy() 
         qvel_limits = np.array([120 * np.pi / 180, 180 * np.pi / 180, 180 * np.pi / 180])
 
         if has_block_hit_floor(self.data):
-            if self.use_mode == "RL_eval":
+            if self.use_mode == "RL_eval" or self.use_mode =="debug":
                 print("Hit floor before flip")
             return -20, True
 
         if self.use_qpos:
             if np.any(active_qvel < -qvel_limits) or np.any(active_qvel > qvel_limits):
-                if self.use_mode == "RL_eval":
+                if self.use_mode == "RL_eval" or self.use_mode =="debug":
                     print("Joint velocity limit exceeded")
                 return -20, True
 
         if self._is_close_to_desired_state():
-            if self.use_mode == "RL_eval":
+            if self.use_mode == "RL_eval" or self.use_mode =="debug":
                 print("Close to desired state")
             return 20, True
 
@@ -281,7 +296,7 @@ class URFlipBlockEnv(gym.Env):
         angular_velocity_error = np.linalg.norm(
             self.block_angvel - [self.desired_release_state['omega_x0'], self.desired_release_state['omega_y0'], self.desired_release_state['omega_z0']]
         )
-        orientation_error = quat_dist
+        orientation_error = self.quat_dist
 
         progress_reward = max(0, 1 - (position_error + translational_velocity_error))
         reward = (
@@ -292,17 +307,18 @@ class URFlipBlockEnv(gym.Env):
             - 0.1 * orientation_error
         )
         
-        if self.use_mode == "RL_eval":
+        if self.use_mode == "RL_eval" or self.use_mode =="debug":
             print("Discrepancy between desired state and current state", progress_reward, reward)
 
         if self.use_mpc and self.mpc_timestep >= len(self.mpc_nominal_traj):
-            if self.use_mode == "RL_eval":
+            if self.use_mode == "RL_eval" or self.use_mode =="debug":
                 print("MPC timestep exceeded")
             return reward, True 
         
-        if quat_dist < 0.01:
-            if self.use_mode == "RL_eval":
-                print(f"Release angle exceeded: {quat_dist}")
+        if self.quat_dist < 0.02 or self._is_orientation_in_target_range():
+            if self.use_mode == "RL_eval" or self.use_mode =="debug":
+                print(f"Is close: {self._is_orientation_in_target_range()}")
+                print(f"Release angle exceeded: {self.quat_dist}")
             return reward, True
 
         return reward, False
@@ -326,7 +342,44 @@ class URFlipBlockEnv(gym.Env):
         ])
         return obs
 
+    def _is_orientation_in_target_range(self):
+        block_euler_x = self.block_euler[0]
+        block_euler_y = self.block_euler[1] 
+        block_euler_z = self.block_euler[2] 
 
+        mode = self.release_mode
+        
+        tolerance = 10 
+
+        if mode == 1:
+            adjusted_theta_y_radians = np.pi - self.euler_release_desired_block[1]
+            desired_euler_degrees = np.degrees([
+                self.euler_release_desired_block[0], 
+                adjusted_theta_y_radians,
+                self.euler_release_desired_block[2]
+            ])
+            desired_y = desired_euler_degrees[1]
+
+            #print(f"Desired_y: {desired_y}, Block euler: {self.block_euler}")
+            return (
+                block_euler_y >= desired_y  and
+                abs(block_euler_x + 180) <= tolerance and
+                abs(block_euler_z) <= tolerance
+            )
+
+        elif mode == 2:
+            desired_euler_degrees = np.degrees(self.euler_release_desired_block)
+            desired_y = desired_euler_degrees[1]
+            #print(f"Mode 2 Desired_y: {desired_y}, Block euler: {self.block_euler}") 
+            return (
+                block_euler_y <= desired_y and
+                abs(block_euler_x) <= tolerance and
+                abs(block_euler_z - 180) <= tolerance
+            )
+            #return False
+
+        return False
+    
     def _calculate_residuals(self):
         translational_velocity_residual = np.linalg.norm(
             self.block_linvel - np.array([self.desired_release_state['v_x0'], 
@@ -367,6 +420,7 @@ class URFlipBlockEnv(gym.Env):
         translational_velocity_residual, angular_velocity_residual, height_residual, orientation_residual = self._calculate_residuals()
 
         info = {
+            "ctrl": self.data.ctrl[self.active_motors_list].copy(),
             "joint_positions": joint_pos.tolist(),
             "joint_velocities": joint_vel.tolist(),
             "ee_height_residual": height_residual,
@@ -378,6 +432,7 @@ class URFlipBlockEnv(gym.Env):
             "raw_ee_angvel": self.ee_ang_vel.tolist(),
             "raw_ee_height": self.ee_height,
             "raw_ee_quat": self.ee_quat,
+            "block_quat": self.block_quat,
         }
 
         if self.use_mpc:  
@@ -451,8 +506,8 @@ class URFlipBlockEnv(gym.Env):
 
 
 
-# def manual_test():
-#     env = URFlipBlockEnv(render_mode='human')  # Initialize the environment
+#def manual_test():
+#     env = URFlipBlockEnv(render_mode='human', use_mode="debug")  # Initialize the environment
 #     num_episodes = 1  # Number of episodes to test
 #     print(f"Starting manual test with {num_episodes} episodes...")
 #     print(f"Motor list: {env.active_motors_list}")
@@ -483,6 +538,7 @@ class URFlipBlockEnv(gym.Env):
 #             # # Print step information
 #             print(f"Action: {action}")
 #             print(f"Observation: {observation}")
+#             print(f"Control input: {info['ctrl']}")
 #             print(f"Joint pos: {info['joint_positions']}")
 #             print(f"Joint vel: {info['joint_velocities']}")
 #             print(f"Reward: {reward}")
@@ -500,6 +556,6 @@ class URFlipBlockEnv(gym.Env):
 # if __name__ == "__main__":
 #     manual_test()
 
-#     # env = URFlipBlockEnv(render_mode='human')
-#     # check_env(env, skip_render_check=False)
+#     env = URFlipBlockEnv()
+#     check_env(env, skip_render_check=True)
 
